@@ -604,3 +604,28 @@ img{max-width:100%}
 .who .ws{font-size:12px;color:var(--muted);margin-top:2px}
 .gmtag{font-style:normal;font-family:var(--fu);font-weight:700;font-size:9px;letter-spacing:1.4px;
   color:#20160a;background:var(--gold);padding:1px 5px;border-radius:4px;vertical-align:2px}
+
+/* ══ STANDINGS ════════════════════════════════════════════════ */
+.stbanner{width:100%;height:auto;display:block;border-radius:12px;margin-bottom:10px}
+.sttable{display:flex;flex-direction:column;gap:6px}
+.strow{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;
+  background:var(--card);border:1px solid var(--line)}
+/* Tu propia fila resaltada: en una tabla larga uno se busca a sí mismo. */
+.strow.me{border-color:var(--blue);background:linear-gradient(180deg,#14243d,#0e1726)}
+.stpos{flex:0 0 26px;text-align:center;font-family:var(--fb);font-weight:800;font-size:15px;color:var(--muted)}
+.stav{flex:0 0 36px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
+  background:linear-gradient(140deg,var(--blue),var(--violet));color:#fff;
+  font-family:var(--fb);font-weight:800;font-size:15px}
+.stav.gm{background:linear-gradient(140deg,#e8c063,#a97b1f);color:#20160a;font-size:17px}
+.strow .stb{flex:1;min-width:0}
+.stn{font-family:var(--fb);font-weight:800;font-size:14.5px;line-height:1.2}
+.yotag{font-style:normal;font-family:var(--fu);font-weight:700;font-size:8.5px;letter-spacing:1.2px;
+  color:#fff;background:var(--blue);padding:1px 5px;border-radius:4px;vertical-align:2px}
+.stbar{margin:5px 0 3px}
+.stsub{font-size:11px;color:var(--muted)}
+.stmi{flex:0 0 auto;text-align:right;line-height:1.1}
+.stmi b{display:block;font-family:var(--fb);font-weight:800;font-size:17px;color:var(--green2)}
+.stmi span{font-family:var(--fu);font-weight:700;font-size:9px;letter-spacing:1px;color:var(--muted)}
+
+/* Fecha de hoy bajo el saludo del Home */
+.hoy{font-size:11.5px;color:var(--dim);margin-top:3px;text-transform:capitalize}

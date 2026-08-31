@@ -227,11 +227,14 @@ function load() {
   return ST;
 }
 /* Antes de escribir a disco se vuelca el perfil activo a `atletas`, si no
-   lo que se guardaría sería el mapa de perfiles desactualizado. */
+   lo que se guardaría sería el mapa de perfiles desactualizado.
+   El disco es la fuente de verdad inmediata; la nube va detrás y sin
+   bloquear, para que la app no dependa de tener internet. */
 function save() {
   try {
     if (typeof guardarActivo === 'function') guardarActivo();
     localStorage.setItem(KEY, JSON.stringify(ST));
   } catch (e) {}
+  try { if (typeof sincronizar === 'function') sincronizar(); } catch (e) {}
 }
 function reset() { localStorage.removeItem(KEY); ST = fresh(); }

@@ -113,13 +113,13 @@ const PACKS = [
 
 /* ── Compra directa con MILLAS ────────────────────────────────
    Las millas son las que corriste de verdad (se derivan de ST.runs),
-   así que son MUCHO más escasas que los shards.
+   así que son escasas: no se farmean reclamando retos, solo saliendo.
 
-   Los precios están altos a propósito: comprar directo es el camino
-   caro. Un cofre cuesta 300 💎 y te puede dar cualquier cosa; aquí
-   pagas de más por el privilegio de ESCOGER exactamente qué quieres.
-   Si no te importa cuál sale, el cofre siempre rinde más. */
-const MILE_PRICE = { rare:80, epic:250, mythic:750 };
+   Precios alcanzables a propósito. Lo que compras aquí es CERTEZA:
+   escoges exactamente el objeto que quieres. El cofre sigue siendo la
+   vía rápida —una tirada puede darte un Mythic de una— pero es azar.
+   Millas = seguro y lento. Cofre = rápido y con suerte. */
+const MILE_PRICE = { rare:40, epic:80, mythic:120 };
 
 const packImg = key => key ? `art/${key}.png` : null;
 

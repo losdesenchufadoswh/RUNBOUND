@@ -17,7 +17,7 @@ let EDITING = null;
 const NAV = [
   { id:'inicio',        ic:'🏠', label:'Home' },
   { id:'desafios',      ic:'🎯', label:'Challenges' },
-  { id:'competir',      ic:'🏆', label:'League' },
+  { id:'standings',     ic:'🏆', label:'Standings' },
   { id:'entrenamiento', ic:'📊', label:'Training' },
   { id:'tienda',        ic:'🛒', label:'Shop' }
 ];
@@ -124,6 +124,7 @@ function renderInicio() {
     <div>
       <div class="pgreet">¡Vamos, ${esc(p.name)}! <span class="lvlchip">${L.level}</span></div>
       <div class="prank">🏃 ${p.title ? esc(LOOT_BY_ID[p.title].name) : 'Rookie Runner'}</div>
+      <div class="hoy">${fechaHoy()}</div>
     </div>
     <div class="streakchip"><div class="n">🔥 ${actividades()}</div><div class="l">Activities</div></div>
   </div>
@@ -577,15 +578,15 @@ function renderTienda() {
     </div>
 
     <div class="card" style="border-color:var(--line2)">
-      <div class="ctitle" style="color:var(--gold2)">⚠️ LEE ESTO ANTES DE COMPRAR</div>
+      <div class="ctitle" style="color:var(--gold2)">MILLAS O COFRE</div>
       <div style="font-size:13px;line-height:1.65;color:#c3cede">
-        Comprar directo es <b style="color:var(--gold2)">el camino caro</b>, a propósito.
-        Un cofre cuesta <b>300 💎</b> y te da algo al azar; aquí pagas de más por el lujo de
-        <b>escoger exactamente qué quieres</b>.
+        Aquí lo que compras es <b style="color:var(--gold2)">certeza</b>: escoges exactamente
+        el objeto que quieres, sin depender de la suerte.
         <br><br>
-        Un Mythic aquí son <b style="color:var(--gold2)">${MILE_PRICE.mythic} millas</b> —
-        meses de correr. Con los shards que juntas en ese tiempo tirarías decenas de cofres.
-        <b style="color:var(--text)">Si no te importa cuál sale, el cofre siempre rinde más.</b>
+        El cofre es la vía rápida — una sola tirada puede darte un Mythic. Pero es azar.
+        <b style="color:var(--text)">Millas: seguro y lento. Cofre: rápido y con suerte.</b>
+        <br><br>
+        Y las millas no se regalan: solo salen de moverte.
       </div>
       <div class="hrow" style="margin-top:10px;border:0;padding-bottom:0">
         ${Object.entries(MILE_PRICE).map(([r, p]) =>
@@ -861,6 +862,86 @@ function modalLogRun() {
     </div>`);
 }
 
+/* Fecha de hoy en español, para que se vea en qué día estás parado. */
+function fechaHoy() {
+  return new Date().toLocaleDateString('es-PR',
+    { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+}
+
+/* ── STANDINGS · tabla de la temporada ────────────────────────
+   Todo lo que sale aquí es DERIVADO de las actividades registradas:
+   millas del año, cuántas veces salió cada quien y su mejor salida.
+   Nadie aparece con números que no se ganó. */
+function statsDeAtleta(id) {
+  const d = (ST.atletas || {})[id];
+  const runs = d ? (d.runs || []).filter(r => !r.manual) : [];
+  const desde = D.startOfYear();
+  const season = runs.filter(r => new Date(r.start_iso) >= desde);
+  return {
+    millas: season.reduce((s, r) => s + U.mi(r.distance_m), 0),
+    actividades: season.length,
+    /* El récord personal: la salida más larga que ha hecho. */
+    pr: runs.reduce((m, r) => Math.max(m, r.distance_m), 0),
+    ultima: runs.length ? runs.reduce((m, r) =>
+      new Date(r.start_iso) > new Date(m.start_iso) ? r : m).start_iso : null
+  };
+}
+
+function renderStandings() {
+  const filas = personas().map(p => ({ ...p, ...statsDeAtleta(p.id) }))
+    .sort((a, b) => b.millas - a.millas);
+  const lider = filas[0] ? filas[0].millas : 0;
+  const medalla = i => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+
+  const cuerpo = filas.map((f, i) => {
+    const yo = f.id === ST.quienSoy;
+    return `<div class="strow ${yo ? 'me' : ''}">
+      <div class="stpos">${medalla(i) || (i + 1)}</div>
+      <div class="stav ${f.coach ? 'gm' : ''}">${f.coach ? '★' : esc(f.name.slice(0,1).toUpperCase())}</div>
+      <div class="stb">
+        <div class="stn">${esc(f.name)}${yo ? ' <i class="yotag">TÚ</i>' : ''}</div>
+        <div class="stbar">${bar(lider ? f.millas / lider * 100 : 0)}</div>
+        <div class="stsub">${f.actividades} ${f.actividades === 1 ? 'actividad' : 'actividades'} · PR ${f.pr ? U.dist(f.pr,1) + ' ' + U.distU() : '—'}</div>
+      </div>
+      <div class="stmi"><b>${f.millas.toFixed(1)}</b><span>${U.distU()}</span></div>
+    </div>`;
+  }).join('');
+
+  const totalMi = filas.reduce((s, f) => s + f.millas, 0);
+  const totalAct = filas.reduce((s, f) => s + f.actividades, 0);
+
+  return `
+  <img class="stbanner" src="art/standings_banner.jpg" alt="Standings · Season Rankings"
+       onerror="this.style.display='none'">
+  <div class="sub">${fechaHoy().toUpperCase()}</div>
+
+  <div class="duo">
+    <div class="card"><div class="kv"><div class="k">TOTAL DEL EQUIPO</div>
+      <div class="v" style="color:var(--green2)">${totalMi.toFixed(1)} <small style="font-size:13px;color:var(--muted)">${U.distU()}</small></div>
+      <div class="s">Desde enero</div></div></div>
+    <div class="card"><div class="kv"><div class="k">ACTIVIDADES</div>
+      <div class="v">${totalAct}</div>
+      <div class="s">${filas.length} corredores</div></div></div>
+  </div>
+
+  <button class="evt" data-act="go" data-view="competir">
+    <div class="ic">⚔️</div>
+    <div class="b"><div class="kk" style="color:var(--violet2)">DUELO DE LA SEMANA</div>
+      <div class="nn">Improvement League</div>
+      <div class="ss">Termina en ${D.until(ligaFin())}</div></div>
+    <div class="chev">›</div>
+  </button>
+
+  <div class="sect"><h2>TABLA DE LA TEMPORADA</h2>
+    <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">POR MILLAS</span></div>
+  ${totalMi > 0
+    ? `<div class="sttable">${cuerpo}</div>`
+    : `<div class="sttable">${cuerpo}</div>
+       <div class="hint" style="text-align:center;margin-top:10px">
+         Todavía nadie ha registrado actividades. En cuanto alguien salga, la tabla se ordena sola.
+       </div>`}`;
+}
+
 /* ── ¿QUIÉN ERES? ─────────────────────────────────────────────
    Antes de nada se elige la persona. El Coach es el GM: existe siempre
    y es el único que puede crear atletas. Sin contraseñas — esto es una
@@ -872,7 +953,7 @@ function pantallaQuienEres() {
     const datos = (ST.atletas || {})[p.id];
     const sub = p.coach
       ? 'Crea atletas y arma el plan'
-      : datos ? `${(datos.runs || []).length} actividades` : 'Primera vez — empieza con 300 💎';
+      : datos ? `${(datos.runs || []).length} ${(datos.runs||[]).length === 1 ? 'actividad' : 'actividades'}` : 'Primera vez — empieza con 300 💎';
     return `<button class="who ${p.coach ? 'gm' : ''}" data-act="entrar" data-id="${p.id}">
       <div class="wav">${p.coach ? '★' : esc(p.name.slice(0,1).toUpperCase())}</div>
       <div class="wb">
@@ -1230,7 +1311,7 @@ function showLoginScreen() {
 
 const TITLES = {
   inicio:null, desafios:'CHALLENGES', competir:'IMPROVEMENT LEAGUE',
-  entrenamiento:'TRAINING', tienda:'REWARDS SHOP', trainer:'COACH MODE'
+  entrenamiento:'TRAINING', tienda:'REWARDS SHOP', trainer:'COACH MODE', standings:'STANDINGS'
 };
 
 function renderTop() {
@@ -1267,6 +1348,7 @@ function render() {
   }
 
   const map = { inicio:renderInicio, desafios:renderDesafios, competir:renderCompetir,
+                standings:renderStandings,
                 entrenamiento:renderEntrenamiento, tienda:renderTienda, trainer:renderTrainer };
   /* Modo Coach es solo del GM: si un atleta llega ahí, se le manda a Home. */
   if (VIEW === 'trainer' && !soyCoach()) VIEW = 'inicio';

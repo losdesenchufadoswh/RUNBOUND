@@ -42,12 +42,28 @@ function nombreDe(id) {
   return a ? a.name : 'Runner';
 }
 
+/* Rellena lo que falte contra un perfil recién hecho.
+
+   Hace falta porque Firebase NO guarda arrays ni objetos vacíos: un
+   `log: []` o un `collection: {}` simplemente no existen al volver de la
+   nube, y el código que hace `ST.log.unshift(...)` revienta. Todo lo que
+   pase por la nube tiene que pasar por aquí. */
+function normalizarAtleta(d, nombre, esCoach) {
+  const base = perfilNuevo(nombre, esCoach);
+  const out = { ...base, ...(d || {}) };
+  for (const k of CAMPOS_ATLETA) if (out[k] == null) out[k] = base[k];
+  out.profile = { ...base.profile, ...(out.profile || {}) };
+  out.gacha   = { ...base.gacha,   ...(out.gacha   || {}) };
+  out.signin  = { ...base.signin,  ...(out.signin  || {}) };
+  return out;
+}
+
 /* Entra como esa persona: guarda lo del anterior y carga lo suyo.
    Si es la primera vez, le crea el perfil con sus 300 shards. */
 function entrarComo(id) {
   guardarActivo();
   if (!ST.atletas) ST.atletas = {};
-  if (!ST.atletas[id]) ST.atletas[id] = perfilNuevo(nombreDe(id), id === ID_COACH);
+  ST.atletas[id] = normalizarAtleta(ST.atletas[id], nombreDe(id), id === ID_COACH);
   for (const k of CAMPOS_ATLETA) ST[k] = ST.atletas[id][k];
   ST.quienSoy = id;
   save();

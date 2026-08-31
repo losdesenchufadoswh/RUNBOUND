@@ -60,32 +60,33 @@ window.openModal = html => console.log('[STUB] openModal');
 <!-- App main -->
 <script src="js/app.js"></script>
 
-<!-- Boot: esperar a que CURRENT_USER esté listo, luego renderizar -->
+<!-- Boot: Firebase primero (si hay), luego pintar -->
 <script>
-let bootDone = false;
-function tryBoot() {
-  if (bootDone || !CURRENT_USER) return;
-  bootDone = true;
-  
+(async () => {
+  const T0 = Date.now();
+  /* La nube es un extra: si tarda o falla, la app arranca igual con
+     lo que haya en el dispositivo. Por eso hay tope de 4s. */
   load();
+  try {
+    await Promise.race([
+      iniciarFirebase(),
+      new Promise(r => setTimeout(r, 4000))
+    ]);
+  } catch (e) { console.warn('[boot]', e); }
+  if (!CURRENT_USER) loginLocal();
+
   render();
-  /* Si ya hay perfil elegido, se le enseña el bonus del día al entrar. */
-  if (typeof avisarSignin === 'function') avisarSignin();
-  
+
+  /* El splash dura 5s como pediste, pero la carga corre POR DEBAJO: si
+     Firebase tarda 3s no se suman, se solapan. Y el bonus del día sale
+     DESPUÉS de que el splash se va, si no quedaría tapado detrás. */
+  const faltan = Math.max(0, 5000 - (Date.now() - T0));
   setTimeout(() => {
     const s = document.getElementById('splash');
-    if (s) {
-      s.classList.add('off');
-      setTimeout(() => s.remove(), 700);
-    }
-  }, 5000);
-}
-
-/* Intentar cada 100ms hasta que CURRENT_USER exista */
-const bootInterval = setInterval(() => { tryBoot(); if (bootDone) clearInterval(bootInterval); }, 100);
-
-/* Fallback: si a los 3s no se cargó, fuerza el boot */
-setTimeout(() => { if (!bootDone) tryBoot(); }, 3000);
+    if (s) { s.classList.add('off'); setTimeout(() => s.remove(), 700); }
+    if (typeof avisarSignin === 'function') setTimeout(avisarSignin, 620);
+  }, faltan);
+})();
 </script>
 </body>
 </html>
