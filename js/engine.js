@@ -261,9 +261,63 @@ function pickItem(rarity, filter) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-function openPack(pack) {
-  if (ST.profile.shards < pack.cost) return { error:'shards' };
-  ST.profile.shards -= pack.cost;
+/* ── SIGN-IN BONUS ─────────────────────────────────────────
+   Siete días: los primeros seis dan 100 💎 cada uno, el séptimo un
+   cofre gratis. Se reclama UNA vez al día.
+
+   A propósito NO se reinicia si faltas un día: la cuenta es "siete
+   días que entraste", no "siete seguidos". Castigar el fallo empuja a
+   abrir la app por abrir, y el punto de RUNBOUND es que salgas a
+   moverte, no que hagas login religiosamente.
+
+   Al reclamar el día 7 el ciclo vuelve a empezar. */
+const SIGNIN_DIAS   = 7;
+const SIGNIN_SHARDS = 100;
+
+function signinEstado() {
+  if (!ST.signin) ST.signin = { dia:0, ultimo:null };
+  return ST.signin;
+}
+/* ¿Hay algo que reclamar hoy? */
+function signinPendiente() {
+  return signinEstado().ultimo !== D.key(new Date());
+}
+/* Qué día del ciclo se reclamaría ahora (1..7). */
+function signinProximo() {
+  return signinEstado().dia + 1;
+}
+/* Recompensa de cada casilla, para pintar el panel. */
+function signinPremio(dia) {
+  return dia >= SIGNIN_DIAS
+    ? { cofre:true,  shards:0 }
+    : { cofre:false, shards:SIGNIN_SHARDS };
+}
+
+function reclamarSignin() {
+  if (!signinPendiente()) return { ok:false, msg:'Ya reclamaste hoy' };
+  const s = signinEstado();
+  const dia = s.dia + 1;
+  const premio = signinPremio(dia);
+
+  if (!premio.cofre) ST.profile.shards += premio.shards;
+
+  /* Al cobrar el 7 el ciclo se reinicia. */
+  s.dia = premio.cofre ? 0 : dia;
+  s.ultimo = D.key(new Date());
+
+  ST.log.unshift({ t:new Date().toISOString(), kind:'signin',
+    txt: premio.cofre ? `Día ${dia}: cofre gratis`
+                      : `Día ${dia}: +${premio.shards} shards` });
+  save();
+  return { ok:true, dia, ...premio };
+}
+
+/* `gratis` salta el cobro: lo usa el cofre del día 7. */
+function openPack(pack, { gratis = false } = {}) {
+  if (!gratis) {
+    if (ST.profile.shards < pack.cost) return { error:'shards' };
+    ST.profile.shards -= pack.cost;
+  }
 
   const results = [];
   for (let i = 0; i < pack.pulls; i++) {
@@ -312,12 +366,36 @@ function totals(period) {
   };
 }
 
-/* Leaderboard: rivales son mock hasta que exista backend.
-   Nunca mezclar aquí data cruda de Strava de otra persona. */
+/* ── ROSTER ────────────────────────────────────────────────
+   Los atletas los añade el coach. No hay nombres inventados de
+   relleno: si el roster está vacío, la Liga lo dice en vez de
+   fabricar rivales que no existen. */
+function addAtleta(nombre) {
+  const n = String(nombre || '').trim();
+  if (!n) return { ok:false, msg:'Ponle nombre al atleta' };
+  if (!ST.roster) ST.roster = [];
+  if (ST.roster.some(a => a.name.toLowerCase() === n.toLowerCase()))
+    return { ok:false, msg:'Ese atleta ya está en el roster' };
+  ST.roster.push({ id:'a' + Math.random().toString(36).slice(2, 9), name:n });
+  ST.log.unshift({ t:new Date().toISOString(), kind:'roster', txt:`${n} añadido al roster` });
+  save();
+  return { ok:true, name:n };
+}
+function delAtleta(id) {
+  if (!ST.roster) return;
+  ST.roster = ST.roster.filter(a => a.id !== id);
+  save();
+}
+
+/* Leaderboard sobre el roster del coach.
+   Cada atleta tiene su propio dispositivo, así que hasta que exista
+   backend solo se conocen sus millas si el coach las anotó (`dist_m`).
+   Quien no tenga nada aparece en 0 — nunca se inventa un número. */
 function leaderboard() {
   const me = totals('monthly').dist;
-  const seedv = [1.42, 1.31, 1.19, 0.86, 0.71];
-  const rows = RIVALS.map((r, i) => ({ ...r, dist: me * seedv[i], me:false }));
+  const rows = (ST.roster || []).map(a => ({
+    name: a.name, em: a.em || '🏃', dist: a.dist_m || 0, me:false
+  }));
   rows.push({ name:'Tú', em:'🏃', dist: me, me:true });
   return rows.sort((a, b) => b.dist - a.dist).map((r, i) => ({ ...r, rank: i + 1 }));
 }

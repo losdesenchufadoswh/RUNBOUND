@@ -161,15 +161,21 @@ function progresoPersonal(period = 'daily') {
    OJO: cuando entre Strava, aquí solo pueden viajar PUNTOS
    NORMALIZADOS, nunca la actividad cruda del otro atleta. */
 function rival(period = 'weekly') {
+  /* Sin roster no hay rival. Antes se sacaba de una lista de nombres
+     inventados; ahora los atletas los añade el coach, y si no hay
+     ninguno la Liga lo dice en vez de fabricar un contrincante falso. */
+  const roster = ST.roster || [];
+  if (!roster.length) return null;
+
   const semilla = Math.floor(Date.now() / 6048e5);
   const rnd = mulberry32(semilla * 7919);
-  const r = RIVALS[Math.floor(rnd() * RIVALS.length)];
+  const r = roster[Math.floor(rnd() * roster.length)];
   const mio = scoreTotal(period);
   const pts = k => Math.round(Math.min(CAPS[k], mio[k].pts * (0.7 + rnd() * 0.55)));
   const d = { mejora: pts('mejora'), adherencia: pts('adherencia'),
               objetivos: pts('objetivos'), esfuerzo: pts('esfuerzo') };
   return {
-    nombre: r.name, em: r.em, nivel: 40 + Math.floor(rnd() * 40),
+    nombre: r.name, em: r.em || '🏃', nivel: 40 + Math.floor(rnd() * 40),
     rango: 'Pro Runner', desglose: d,
     total: d.mejora + d.adherencia + d.objetivos + d.esfuerzo,
     /* El % se DERIVA de sus puntos de mejora (fórmula inversa a scoreMejora),

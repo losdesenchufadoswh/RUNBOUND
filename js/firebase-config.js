@@ -37,7 +37,9 @@ setTimeout(() => {
 
 /* Guardar a Firebase (cuando esté conectado). */
 async function saveToFirebase() {
-  if (!CURRENT_USER) return;
+  /* save() puede dispararse antes de que load() arme ST (por ejemplo si
+     Firebase resuelve primero). Sin esta guarda revienta leyendo ST.challenges. */
+  if (!CURRENT_USER || !ST) return;
   if (CURRENT_USER.isLocal) {
     /* Por ahora, solo localStorage */
     return;

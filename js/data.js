@@ -93,7 +93,7 @@ function newRun(o = {}) {
   };
 }
 
-/* ── generador determinista de historial ──────────────────── */
+/* ── generador determinista (lo usa el rival de la Liga) ─── */
 function mulberry32(a) {
   return function () {
     a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -101,47 +101,6 @@ function mulberry32(a) {
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
-}
-
-function seedRuns() {
-  const rnd = mulberry32(20260828);
-  const runs = [];
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const start = D.startOfYear();
-  const days = Math.round((today - start) / 864e5);
-
-  for (let i = days; i >= 0; i--) {
-    const d = new Date(today); d.setDate(d.getDate() - i);
-    const recent = i < 12;                       // streak de 12 días
-    if (!recent && rnd() > 0.42) continue;       // ~3 runs/semana antes de eso
-
-    const long = rnd() > 0.82;
-    const mi = long ? 3.4 + rnd() * 2.4 : 1.4 + rnd() * 1.7;
-    /* Perfil de alguien que empieza: mezcla de caminata y trote, con una
-       tendencia LEVE de mejora hacia el presente (~1.5% por mes). Es lo que
-       hace que el sistema de mejora personal tenga algo que medir. */
-    const meses = 1 - (days - i) / days * 0.07;          // mejora lenta de fondo
-    const reciente = i < 21 ? 1 - (21 - i) / 21 * 0.05 : 1; // últimas 3 semanas más marcadas
-    const tendencia = meses * reciente;
-    const paceSec = ((long ? 960 : 880) + rnd() * 200) * tendencia;   // seg/milla
-    const dist = mi * M_PER_MI;
-    const moving = mi * paceSec;
-    const hasHr = rnd() > 0.18;
-    d.setHours(6, 15 + Math.floor(rnd() * 40), 0, 0);
-
-    runs.push(newRun({
-      distance_m: dist,
-      moving_s: moving,
-      elapsed_s: moving * (1 + rnd() * 0.08),
-      avg_hr: hasHr ? Math.round(138 + rnd() * 24) : null,
-      max_hr: hasHr ? Math.round(168 + rnd() * 18) : null,
-      cadence_spm: rnd() > 0.25 ? Math.round(160 + rnd() * 16) : null,
-      elev_m: (long ? 60 : 22) + rnd() * 70,
-      start_iso: d.toISOString(),
-      source: 'manual'
-    }));
-  }
-  return runs.sort((a, b) => new Date(b.start_iso) - new Date(a.start_iso));
 }
 
 /* ── retos por defecto ────────────────────────────────────── */
@@ -153,7 +112,7 @@ function seedChallenges() {
 
   /* Ninguno pide velocidad absoluta — se puede completar TODO caminando.
      Pero tampoco hay puntos por "salir de la casa": lo que puntúa fuerte
-     son las SESIONES del plan (`by:'plan'` / `by:'trainer'`), que exigen
+     son las SESIONES del plan (`by:'plan'` / `by:'system'`), que exigen
      cumplir parámetros concretos. Los `by:'system'` son metas de volumen. */
   return [
     /* ── sesiones del plan (Adherencia) ─────────────────── */
@@ -185,10 +144,10 @@ function seedChallenges() {
     { id:'c_wruns',  period:'weekly', name:'Active Days', desc:'5 actividades esta semana',
       goal:{ type:'runs', target:5 }, xp:900, shards:110, by:'system', expires:eow() },
     { id:'c_hill',   period:'weekly', name:'Hill Work', desc:'600 ft de subida acumulados',
-      goal:{ type:'elevation', target:600 / 3.28084 }, xp:500, shards:80, by:'trainer', expires:eow() },
+      goal:{ type:'elevation', target:600 / 3.28084 }, xp:500, shards:80, by:'system', expires:eow() },
 
     { id:'c_mile',   period:'monthly', name:'Monthly Goal', desc:'40 millas en el mes',
-      goal:{ type:'distance', target:40 * M_PER_MI }, xp:2000, shards:300, by:'trainer', expires:eom() },
+      goal:{ type:'distance', target:40 * M_PER_MI }, xp:2000, shards:300, by:'system', expires:eom() },
     { id:'c_long',   period:'monthly', name:'Long Effort', desc:'Una sola salida de 6 millas',
       goal:{ type:'single_distance', target:6 * M_PER_MI }, xp:1800, shards:250, by:'system', expires:eom() },
 
@@ -196,23 +155,6 @@ function seedChallenges() {
       goal:{ type:'distance', target:400 * M_PER_MI }, xp:10000, shards:2000, by:'system', expires:eoy() },
     { id:'c_yhr',    period:'yearly', name:'Zone 2 Base', desc:'50 actividades en zona Z2–Z3',
       goal:{ type:'hr', target:50, min:110, max:155 }, xp:3000, shards:400, by:'system', expires:eoy() }
-  ];
-}
-
-function seedArchive() {
-  const y = new Date().getFullYear();
-  /* `tint` ajusta la lámina al color del boss (el archivo de SOVEREIGN
-     no tiene nada azul, así que el Frost Titan se logra rotando el matiz). */
-  return [
-    { id:'b1', name:'Infernal Colossus', loc:'Blazing Canyon', em:'🔥', art:'lionheart_titan',
-      tint:'saturate(1.35) hue-rotate(-12deg)', bg:'linear-gradient(135deg,#3b1108,#8c2d0d)',
-      dist_m:5000, time_s:1427, place:1, date:`${y}-05-18`, pr:true },
-    { id:'b2', name:'Frost Titan', loc:'Glacial Pass', em:'❄️', art:'king_wolf',
-      tint:'hue-rotate(165deg) saturate(1.5) brightness(1.12)', bg:'linear-gradient(135deg,#0a1f3d,#1d5fa8)',
-      dist_m:5000, time_s:1531, place:2, date:`${y}-04-12`, pr:false },
-    { id:'b3', name:'Venom Serpent', loc:'Jungle Depths', em:'🐍', art:'warden_of_dead',
-      tint:'hue-rotate(55deg) saturate(1.5)', bg:'linear-gradient(135deg,#0d2b12,#2f7a1f)',
-      dist_m:5000, time_s:1602, place:3, date:`${y}-03-09`, pr:false }
   ];
 }
 
@@ -224,30 +166,30 @@ const UPCOMING = {
   starts: new Date(Date.now() + (2 * 864e5) + (14 * 36e5)).toISOString()
 };
 
-const RIVALS = [
-  { name:'Vertex',      em:'🦅' }, { name:'AstraRunner', em:'🌟' },
-  { name:'SwiftStride', em:'⚡' }, { name:'Trailblazer', em:'🔥' },
-  { name:'NightOwl',    em:'🦉' }
-];
 
 /* ── store ────────────────────────────────────────────────── */
+/* Cuenta nueva de verdad: sin historial inventado, sin atletas de
+   relleno y sin monedas regaladas. Todo lo que aparezca en pantalla
+   tiene que haberlo puesto alguien — el que corre o su coach.
+
+   hrMax/hrRest son TUYAS: el esfuerzo se calcula con reserva cardiaca
+   (Karvonen), que ya es relativa a la persona. Sin esto, un pulso de
+   150 lpm significaría lo mismo para todo el mundo, y no es así. */
 function fresh() {
   return {
-    /* bonusXp = el historial anterior a la app.
-       hrMax/hrRest son TUYAS: el esfuerzo se calcula con reserva cardiaca
-       (Karvonen), que ya es relativa a la persona. Sin esto, un pulso de
-       150 lpm significaría lo mismo para todo el mundo, y no es así. */
-    profile: { name:'Ana', shards:1240, millasGastadas:0, bonusXp:32200,
+    profile: { name:'Runner', shards:300, millasGastadas:0, bonusXp:0,
                hrMax:188, hrRest:58,
                title:null, avatar:null, frame:null, background:null,
                tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
-    runs: seedRuns(),
+    runs: [],                  // se llena al registrar actividades
     challenges: seedChallenges(),
-    archive: seedArchive(),
+    archive: [],               // carreras contra bosses, cuando existan
+    roster: [],                // atletas — los añade el coach
+    signin: { dia:0, ultimo:null },
     claimed: {},
     collection: {},            // { lootId: cantidad }
     gacha: { pulls:0, sinceEpic:0, sinceMythic:0 },
-    season: { name:'Season of Ascent', points:12680, target:20000, level:27,
+    season: { name:'Season of Ascent', points:0, target:20000, level:1,
               nextAt:15000, nextReward:'Ascender Frame',
               ends: new Date(Date.now() + 24 * 864e5).toISOString() },
     /* La semanal se deriva de la mensual (4.33 semanas/mes) para que las

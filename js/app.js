@@ -168,6 +168,16 @@ function renderInicio() {
     <div class="check ${evalChallenge(hoy).done ? '' : 'off'}">✓</div>
   </button>` : ''}
 
+  <button class="row ${signinPendiente() ? 'hot' : ''}" data-act="signin">
+    <div class="ic ${signinPendiente() ? 'g' : ''}">🎁</div>
+    <div class="b"><div class="kk">SIGN-IN BONUS</div>
+      <div class="nn">Día ${signinProximo()} de ${SIGNIN_DIAS}</div>
+      <div class="ss">${signinPendiente()
+        ? (signinProximo() >= SIGNIN_DIAS ? '¡Cofre gratis esperándote!' : `+${SIGNIN_SHARDS} 💎 sin reclamar`)
+        : 'Ya reclamaste hoy'}</div></div>
+    ${signinPendiente() ? '<i class="dot"></i>' : '<div class="chev">›</div>'}
+  </button>
+
   <button class="evt" data-act="go" data-view="competir">
     <div class="ic">🏆</div>
     <div class="b"><div class="kk" style="color:var(--violet2)">NEXT EVENT</div>
@@ -249,6 +259,39 @@ function renderCompetir() {
   const mio = scoreTotal('weekly');
   const op = rival('weekly');
   const semana = Math.ceil((new Date() - D.startOfYear()) / 6048e5);
+
+  /* Sin atletas en el roster no hay contra quién medirse. Se dice, en vez
+     de inventar un rival: un marcador falso vuelve inútil el de verdad. */
+  if (!op) {
+    return `
+    <div class="sub">SEMANA ${semana} · TERMINA EN ${D.until(ligaFin())}</div>
+    <div class="fair">
+      <h3>EL SISTEMA ES JUSTO</h3>
+      <p>Los puntos salen de tu mejora personal y de <b style="color:var(--text)">cumplir el plan de tu coach</b> —
+      <b style="color:var(--text)">no de tu velocidad</b>. Camines o corras, compites en igualdad.</p>
+    </div>
+    <div class="card" style="text-align:center;padding:26px 18px">
+      <div style="font-size:40px;margin-bottom:8px">👥</div>
+      <div style="font-family:var(--fb);font-weight:800;font-size:18px;margin-bottom:6px">Todavía no hay Liga</div>
+      <div style="font-size:13px;line-height:1.6;color:#c3cede">
+        La Liga necesita atletas. Entra a <b style="color:var(--blue2)">Modo Coach</b> y añade a tu gente —
+        en cuanto haya alguien más, aquí aparece el enfrentamiento semanal.
+      </div>
+      <button class="btnbig" style="margin-top:14px" data-act="go" data-view="trainer">IR A MODO COACH</button>
+    </div>
+    <div class="card flat">
+      <div class="ctitle">TUS PUNTOS ESTA SEMANA</div>
+      <div class="kv"><div class="k">TOTAL</div>
+        <div class="v" style="color:var(--blue2)">${mio.total} <small style="font-size:14px;color:var(--muted)">/ 1000</small></div>
+        <div class="s" style="margin-top:7px">${bar(mio.total / 10)}</div></div>
+      ${[['mejora','Personal Improvement'], ['adherencia','Plan Adherence'],
+         ['objetivos','Goals Completed'], ['esfuerzo','Effort (HR relativo)']]
+        .map(([k, l]) => `<div class="hrow"><div class="hb"><div class="ht">${l}</div></div>
+          <div style="font-family:var(--fu);font-weight:700;font-size:12.5px;color:var(--blue2)">${mio[k].pts} / ${CAPS[k]}</div>
+        </div>`).join('')}
+    </div>`;
+  }
+
   const gano = mio.total >= op.total;
   const dif = Math.abs(mio.total - op.total);
   const fr = ST.profile.frame ? 'f-' + LOOT_BY_ID[ST.profile.frame].slug : '';
@@ -611,6 +654,26 @@ function renderTrainer() {
       <div class="s">${sem.runs} act · ${U.distU()}</div></div></div>
   </div>
 
+  <div class="sect"><h2>ATLETAS</h2>
+    <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">${(ST.roster||[]).length}</span></div>
+  <div class="card">
+    <div class="addrow">
+      <input id="a_name" type="text" placeholder="Nombre del atleta" maxlength="28">
+      <button class="btnadd" data-act="add-atleta">AÑADIR</button>
+    </div>
+    ${(ST.roster || []).length
+      ? `<div class="roster">${ST.roster.map(a => `
+          <div class="rrow">
+            <div class="rav">${esc(a.name.slice(0,1).toUpperCase())}</div>
+            <div class="rb"><div class="rn2">${esc(a.name)}</div>
+              <div class="rs">${a.dist_m ? U.dist(a.dist_m,1) + ' ' + U.distU() + ' este mes' : 'Sin actividad registrada'}</div></div>
+            <button class="icob del" data-act="del-atleta" data-id="${a.id}">🗑️</button>
+          </div>`).join('')}</div>`
+      : `<div class="hint" style="margin-top:8px">Todavía no hay atletas. Añade el primero arriba —
+         la Liga y el leaderboard salen de esta lista, así que hasta que agregues a alguien
+         solo apareces tú.</div>`}
+  </div>
+
   <div class="sect"><h2>CREATE SESSION</h2></div>
   ${segmented(TRAINER_TAB, tabs, 'ttab')}
   <div class="fgrid">
@@ -794,6 +857,49 @@ function modalLogRun() {
     <div class="mrow2">
       <button class="btnbig b" data-act="save-run">GUARDAR</button>
       <button class="btnw" style="margin:0" data-act="close">Cancelar</button>
+    </div>`);
+}
+
+/* ── SIGN-IN BONUS ────────────────────────────────────────────
+   Siete casillas: seis de 100 💎 y la última un cofre gratis.
+   El día reclamable brilla; los cobrados se apagan con un ✓.
+
+   En móvil las siete casillas en fila quedarían de ~50px — ilegibles
+   con el gema y el número dentro. Por eso van 3×2 y el día 7 a lo
+   ancho, que además le da el peso visual que merece. */
+function modalSignin() {
+  const s = signinEstado();
+  const prox = signinProximo();
+  const puedo = signinPendiente();
+
+  const casilla = dia => {
+    const premio = signinPremio(dia);
+    const cobrado = dia <= s.dia;
+    const activo  = puedo && dia === prox;
+    const cls = ['sday', premio.cofre ? 'big' : '', cobrado ? 'done' : '', activo ? 'now' : ''].filter(Boolean).join(' ');
+    const cara = premio.cofre
+      ? `<img src="art/cofre_epico.png" alt="" onerror="this.replaceWith(document.createTextNode('🎁'))">`
+      : `<span class="sgem">💎</span>`;
+    return `<button class="${cls}" ${activo ? 'data-act="reclamar-signin"' : 'disabled'}>
+      <div class="sface">${cara}${cobrado ? '<i class="stick">✓</i>' : ''}</div>
+      <div class="samt">${premio.cofre ? 'COFRE' : '+' + premio.shards}</div>
+      <div class="slabel">Día ${dia}</div>
+    </button>`;
+  };
+
+  openModal(`
+    <div class="signin">
+      <img class="stitle" src="art/signin_title.jpg" alt="Sign-In Bonus"
+           onerror="this.replaceWith(Object.assign(document.createElement('h3'),{textContent:'SIGN-IN BONUS'}))">
+      <div class="sgrid">${[1,2,3,4,5,6].map(casilla).join('')}</div>
+      ${casilla(7)}
+      <div class="hint" style="text-align:center;margin-top:10px">
+        ${puedo
+          ? `Toca el <b style="color:var(--gold2)">Día ${prox}</b> para reclamarlo.`
+          : 'Ya reclamaste hoy. Vuelve mañana.'}
+        <br>Faltar un día no reinicia la cuenta — son siete días que entraste, no siete seguidos.
+      </div>
+      <button class="btnw" data-act="close">Cerrar</button>
     </div>`);
 }
 
@@ -1130,11 +1236,61 @@ document.addEventListener('click', e => {
     case 'stab':    SHOP_TAB = t.dataset.tab; render(); break;
     case 'itab':    INV_TAB = t.dataset.tab; render(); break;
     case 'ttab':    TRAINER_TAB = t.dataset.tab; render(); break;
+    case 'signin':   modalSignin(); break;
+    case 'reclamar-signin': {
+      const r = reclamarSignin();
+      if (!r.ok) { toast(r.msg); break; }
+      if (r.cofre) {
+        /* El día 7 abre un Paquete Básico sin cobrar shards. */
+        closeModal();
+        const pack = PACKS.find(p => p.id === 'basico');
+        const out = openPack(pack, { gratis:true });
+        abrirCofre(out.results, pack);
+        render();
+      } else {
+        modalSignin(); render();
+        toast(`✦ Día ${r.dia} · +${r.shards} 💎`);
+      }
+      break;
+    }
+    case 'add-atleta': {
+      const inp = $('#a_name');
+      const r = addAtleta(inp ? inp.value : '');
+      if (!r.ok) { toast(r.msg); break; }
+      render(); toast(`✅ ${esc(r.name)} añadido`);
+      break;
+    }
+    case 'del-atleta': delAtleta(id); render(); toast('Atleta quitado'); break;
     case 'login-anon':
       if (typeof auth === 'function') {
         auth().signInAnonymously().catch(err => toast('Error: ' + err.message));
       }
       break;
+    case 'signin':   modalSignin(); break;
+    case 'reclamar-signin': {
+      const r = reclamarSignin();
+      if (!r.ok) { toast(r.msg); break; }
+      if (r.cofre) {
+        /* El día 7 abre un Paquete Básico sin cobrar shards. */
+        closeModal();
+        const pack = PACKS.find(p => p.id === 'basico');
+        const out = openPack(pack, { gratis:true });
+        abrirCofre(out.results, pack);
+        render();
+      } else {
+        modalSignin(); render();
+        toast(`✦ Día ${r.dia} · +${r.shards} 💎`);
+      }
+      break;
+    }
+    case 'add-atleta': {
+      const inp = $('#a_name');
+      const r = addAtleta(inp ? inp.value : '');
+      if (!r.ok) { toast(r.msg); break; }
+      render(); toast(`✅ ${esc(r.name)} añadido`);
+      break;
+    }
+    case 'del-atleta': delAtleta(id); render(); toast('Atleta quitado'); break;
     case 'login-anon':
       if (typeof auth === 'function') {
         auth().signInAnonymously().catch(err => toast('Error: ' + err.message));
