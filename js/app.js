@@ -112,7 +112,7 @@ function renderInicio() {
   const fr = p.frame ? 'f-' + LOOT_BY_ID[p.frame].slug : '';
   const hoy = ST.challenges.find(c => c.period === 'daily' && !evalChallenge(c).done) ||
               ST.challenges.find(c => c.period === 'daily');
-  const R = 92, C = 2 * Math.PI * R;
+  const R = 76, C = 2 * Math.PI * R;
 
   return `
   <button class="phead" data-act="perfil">
@@ -132,11 +132,11 @@ function renderInicio() {
   <div class="ringwrap">
     <button class="ringinfo" data-act="explica">i</button>
     <div class="ring">
-      <svg viewBox="0 0 212 212" width="212" height="212">
+      <svg viewBox="0 0 176 176" width="176" height="176">
         <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stop-color="#2f9bff"/><stop offset="1" stop-color="#7cc4ff"/></linearGradient></defs>
-        <circle class="trk" cx="106" cy="106" r="${R}"/>
-        <circle class="val" cx="106" cy="106" r="${R}" stroke-dasharray="${C * pct / 100} ${C}"/>
+        <circle class="trk" cx="88" cy="88" r="${R}"/>
+        <circle class="val" cx="88" cy="88" r="${R}" stroke-dasharray="${C * pct / 100} ${C}"/>
       </svg>
       <div class="mid">
         <div class="pc">${pct}<span style="font-size:26px">%</span></div>
