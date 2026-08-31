@@ -27,25 +27,59 @@ function runsIn(period) {
   return ST.runs.filter(r => !r.manual && new Date(r.start_iso) >= from);
 }
 
-/* ── streak ───────────────────────────────────────────────── */
-function streak() {
-  const days = new Set(ST.runs.filter(r => !r.manual).map(r => D.key(r.start_iso)));
-  let n = 0;
-  const d = new Date(); d.setHours(0,0,0,0);
-  if (!days.has(D.key(d))) d.setDate(d.getDate() - 1);   // hoy todavía cuenta si corriste ayer
-  while (days.has(D.key(d))) { n++; d.setDate(d.getDate() - 1); }
-  return n;
+/* ── CAMBIO DE PERFIL ─────────────────────────────────────── */
+function guardarActivo() {
+  if (!ST.quienSoy) return;
+  if (!ST.atletas) ST.atletas = {};
+  const d = {};
+  for (const k of CAMPOS_ATLETA) d[k] = ST[k];
+  ST.atletas[ST.quienSoy] = d;
 }
 
-function bestStreak() {
-  const days = [...new Set(ST.runs.filter(r => !r.manual).map(r => D.key(r.start_iso)))].sort();
-  let best = 0, run = 0, prev = null;
-  for (const k of days) {
-    const d = new Date(k + 'T00:00:00');
-    run = (prev && (d - prev) === 864e5) ? run + 1 : 1;
-    best = Math.max(best, run); prev = d;
-  }
-  return best;
+function nombreDe(id) {
+  if (id === ID_COACH) return 'Coach';
+  const a = (ST.roster || []).find(x => x.id === id);
+  return a ? a.name : 'Runner';
+}
+
+/* Entra como esa persona: guarda lo del anterior y carga lo suyo.
+   Si es la primera vez, le crea el perfil con sus 300 shards. */
+function entrarComo(id) {
+  guardarActivo();
+  if (!ST.atletas) ST.atletas = {};
+  if (!ST.atletas[id]) ST.atletas[id] = perfilNuevo(nombreDe(id), id === ID_COACH);
+  for (const k of CAMPOS_ATLETA) ST[k] = ST.atletas[id][k];
+  ST.quienSoy = id;
+  save();
+}
+
+function salirDePerfil() {
+  guardarActivo();
+  ST.quienSoy = null;
+  save();
+}
+
+/* El coach es el GM: solo él ve Modo Coach y crea atletas. */
+const soyCoach = () => ST.quienSoy === ID_COACH;
+
+/* Quién puede entrar: el coach siempre, más los atletas del roster. */
+function personas() {
+  return [{ id:ID_COACH, name:'Coach', coach:true },
+          ...(ST.roster || []).map(a => ({ id:a.id, name:a.name, coach:false }))];
+}
+
+/* ── racha por ACTIVIDADES ────────────────────────────────
+   Antes esto contaba días seguidos, y siete días seguidos es una
+   exigencia dura: un solo día de descanso —o de vida— te borraba la
+   racha entera. Ahora cuenta actividades completadas, que es lo que
+   de verdad quieres premiar: que sigas apareciendo, no que no faltes
+   nunca. Descansar un martes ya no te castiga. */
+function actividades() {
+  return ST.runs.filter(r => !r.manual).length;
+}
+/* Actividades de la semana en curso, para el sub-dato. */
+function actividadesSemana() {
+  return runsIn('weekly').length;
 }
 
 /* ── sesiones del plan ─────────────────────────────────────
@@ -110,7 +144,7 @@ function evalChallenge(c) {
     case 'time':
       cur = rs.reduce((s, r) => s + r.moving_s, 0); break;
     case 'streak':
-      cur = streak(); break;
+      cur = actividades(); break;
     case 'cadence':
       cur = rs.reduce((m, r) => Math.max(m, r.cadence_spm || 0), 0); break;
     case 'hr':
@@ -145,7 +179,7 @@ function progressLabel(c, ev) {
   switch (g.type) {
     case 'session':return `${cap(ev.cur)} / ${g.target} SESSIONS`;
     case 'runs':   return `${cap(ev.cur)} / ${g.target} ACTIVITIES`;
-    case 'streak': return `${cap(ev.cur)} / ${g.target} DAYS`;
+    case 'streak': return `${cap(ev.cur)} / ${g.target} ACTIVITIES`;
     case 'cadence':return `${Math.round(cap(ev.cur)) || 0} / ${g.target} SPM`;
     case 'hr':     return `${cap(ev.cur)} / ${g.target} RUNS`;
     case 'time':   return `${U.clock(cap(ev.cur))} / ${U.clock(g.target)}`;

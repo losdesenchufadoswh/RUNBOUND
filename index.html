@@ -69,6 +69,8 @@ function tryBoot() {
   
   load();
   render();
+  /* Si ya hay perfil elegido, se le enseña el bonus del día al entrar. */
+  if (typeof avisarSignin === 'function') avisarSignin();
   
   setTimeout(() => {
     const s = document.getElementById('splash');

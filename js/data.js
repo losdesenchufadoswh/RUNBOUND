@@ -120,9 +120,9 @@ function seedChallenges() {
       goal:{ type:'session', target:1 },
       params:{ dist_m: 2.2 * M_PER_MI, minutes: 30, hrMin: 105, hrMax: 145 },
       xp:600, shards:70, by:'plan', expires:eod() },
-    { id:'s_cuesta', period:'weekly', name:'Hill Repeats', desc:'Busca subida y aguanta',
+    { id:'s_cuesta', period:'weekly', name:'Tempo Run', desc:'Sostenido, más fuerte que un easy',
       goal:{ type:'session', target:2 },
-      params:{ dist_m: 2 * M_PER_MI, elev_m: 250 / 3.28084 },
+      params:{ dist_m: 2 * M_PER_MI, minutes: 25 },
       xp:1400, shards:180, by:'plan', expires:eow() },
     { id:'s_larga',  period:'weekly', name:'Long Run', desc:'Una sola sesión, 50 minutos',
       goal:{ type:'session', target:1 },
@@ -134,17 +134,13 @@ function seedChallenges() {
       goal:{ type:'distance', target:2.5 * M_PER_MI }, xp:500, shards:50, by:'system', expires:eod() },
     { id:'c_time',   period:'daily', name:'Time on Feet', desc:'30 minutos en movimiento',
       goal:{ type:'time', target:1800 }, xp:500, shards:60, by:'system', expires:eod() },
-    { id:'c_peak',   period:'daily', name:'Elevation Gain', desc:'Sube 200 ft de elevación',
-      goal:{ type:'elevation', target:200 / 3.28084 }, xp:750, shards:75, by:'system', expires:eod() },
-    { id:'c_streak', period:'daily', name:'7-Day Streak', desc:'Muévete 7 días seguidos',
+    { id:'c_streak', period:'daily', name:'Activity Streak', desc:'Completa 7 actividades',
       goal:{ type:'streak', target:7 }, xp:400, shards:40, by:'system', expires:eod() },
 
     { id:'c_wdist',  period:'weekly', name:'Weekly Volume', desc:'Acumula 10 millas esta semana',
       goal:{ type:'distance', target:10 * M_PER_MI }, xp:1200, shards:150, by:'system', expires:eow() },
     { id:'c_wruns',  period:'weekly', name:'Active Days', desc:'5 actividades esta semana',
       goal:{ type:'runs', target:5 }, xp:900, shards:110, by:'system', expires:eow() },
-    { id:'c_hill',   period:'weekly', name:'Hill Work', desc:'600 ft de subida acumulados',
-      goal:{ type:'elevation', target:600 / 3.28084 }, xp:500, shards:80, by:'system', expires:eow() },
 
     { id:'c_mile',   period:'monthly', name:'Monthly Goal', desc:'40 millas en el mes',
       goal:{ type:'distance', target:40 * M_PER_MI }, xp:2000, shards:300, by:'system', expires:eom() },
@@ -168,27 +164,48 @@ const UPCOMING = {
 
 
 /* ── store ────────────────────────────────────────────────── */
-/* Cuenta nueva de verdad: sin historial inventado, sin atletas de
-   relleno y sin monedas regaladas. Todo lo que aparezca en pantalla
-   tiene que haberlo puesto alguien — el que corre o su coach.
+/* ── PERFILES ──────────────────────────────────────────────
+   La app la usan varias personas en el mismo dispositivo: el coach
+   (que es el GM y existe desde el arranque) y los atletas que él crea.
+   Al abrir se elige quién eres — sin contraseñas, esto es una libreta
+   compartida, no un banco.
 
-   hrMax/hrRest son TUYAS: el esfuerzo se calcula con reserva cardiaca
+   Cada persona guarda lo suyo en `atletas[id]`. Los datos del que está
+   activo se COPIAN a la raíz de ST (profile, runs, collection…) para que
+   el resto de la app siga leyendo `ST.runs` como siempre; al cambiar de
+   usuario se guardan de vuelta y se hidratan los del otro. Así el cambio
+   de perfil no obligó a tocar ni una de las pantallas. */
+const CAMPOS_ATLETA = ['profile', 'runs', 'collection', 'gacha', 'signin', 'claimed', 'log'];
+const ID_COACH = 'coach';
+
+/* hrMax/hrRest son TUYAS: el esfuerzo se calcula con reserva cardiaca
    (Karvonen), que ya es relativa a la persona. Sin esto, un pulso de
    150 lpm significaría lo mismo para todo el mundo, y no es así. */
-function fresh() {
+function perfilNuevo(nombre, esCoach = false) {
   return {
-    profile: { name:'Runner', shards:300, millasGastadas:0, bonusXp:0,
+    profile: { name:nombre, esCoach, shards:300, millasGastadas:0, bonusXp:0,
                hrMax:188, hrRest:58,
-               title:null, avatar:null, frame:null, background:null,
+               title:null, banner:null, frame:null, background:null, photo:null,
                tz: Intl.DateTimeFormat().resolvedOptions().timeZone },
     runs: [],                  // se llena al registrar actividades
-    challenges: seedChallenges(),
-    archive: [],               // carreras contra bosses, cuando existan
-    roster: [],                // atletas — los añade el coach
-    signin: { dia:0, ultimo:null },
-    claimed: {},
     collection: {},            // { lootId: cantidad }
     gacha: { pulls:0, sinceEpic:0, sinceMythic:0 },
+    signin: { dia:0, ultimo:null },
+    claimed: {},
+    log: []
+  };
+}
+
+/* Cuenta nueva de verdad: sin historial inventado, sin atletas de
+   relleno y sin monedas regaladas. Todo lo que aparezca en pantalla
+   tiene que haberlo puesto alguien — el que corre o su coach. */
+function fresh() {
+  return {
+    quienSoy: null,            // null → la app pregunta quién eres
+    roster: [],                // atletas — los crea el coach
+    atletas: {},               // datos de cada persona, por id
+    challenges: seedChallenges(),
+    archive: [],               // carreras contra bosses, cuando existan
     season: { name:'Season of Ascent', points:0, target:20000, level:1,
               nextAt:15000, nextReward:'Ascender Frame',
               ends: new Date(Date.now() + 24 * 864e5).toISOString() },
@@ -196,7 +213,8 @@ function fresh() {
        dos barras no se contradigan nunca. */
     goals: { weekly: 18 * M_PER_MI, monthly: 78 * M_PER_MI, yearly: 500 * M_PER_MI },
     settings: { units:'mi', trainerMode:false },
-    log: []
+    /* Campos del atleta activo. Vacíos hasta que alguien entre. */
+    ...perfilNuevo('', false)
   };
 }
 
@@ -208,5 +226,12 @@ function load() {
   } catch (e) { ST = fresh(); }
   return ST;
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(ST)); } catch (e) {} }
+/* Antes de escribir a disco se vuelca el perfil activo a `atletas`, si no
+   lo que se guardaría sería el mapa de perfiles desactualizado. */
+function save() {
+  try {
+    if (typeof guardarActivo === 'function') guardarActivo();
+    localStorage.setItem(KEY, JSON.stringify(ST));
+  } catch (e) {}
+}
 function reset() { localStorage.removeItem(KEY); ST = fresh(); }

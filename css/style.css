@@ -581,3 +581,26 @@ img{max-width:100%}
 .rrow .rb{flex:1;min-width:0}
 .rrow .rn2{font-weight:700;font-size:13.5px;line-height:1.2}
 .rrow .rs{font-size:11.5px;color:var(--muted);margin-top:1px}
+
+/* ══ ¿QUIÉN ERES? ═════════════════════════════════════════════ */
+.whowrap{min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+  padding:26px 18px 40px;max-width:460px;margin:0 auto}
+.wlogo{width:min(62vw,250px);height:auto;margin:0 auto 18px;display:block;
+  filter:drop-shadow(0 8px 28px rgba(47,155,255,.3))}
+.wtitle{font-family:var(--fu);font-weight:700;font-size:15px;letter-spacing:3.4px;
+  text-align:center;color:var(--blue2)}
+.wsub{text-align:center;font-size:13px;color:var(--muted);margin:5px 0 18px}
+.wlist{display:flex;flex-direction:column;gap:9px}
+.who{display:flex;align-items:center;gap:12px;width:100%;padding:13px;border-radius:14px;
+  background:var(--card);border:1px solid var(--line);text-align:left}
+.who .wav{flex:0 0 46px;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;
+  background:linear-gradient(140deg,var(--blue),var(--violet));color:#fff;
+  font-family:var(--fb);font-weight:800;font-size:19px}
+/* El coach se distingue de un vistazo: es el GM, no un atleta más. */
+.who.gm{border-color:#c9a24a66;background:linear-gradient(180deg,#161e30,#101725)}
+.who.gm .wav{background:linear-gradient(140deg,#e8c063,#a97b1f);color:#20160a;font-size:22px}
+.who .wb{flex:1;min-width:0}
+.who .wn{font-family:var(--fb);font-weight:800;font-size:16px;line-height:1.2}
+.who .ws{font-size:12px;color:var(--muted);margin-top:2px}
+.gmtag{font-style:normal;font-family:var(--fu);font-weight:700;font-size:9px;letter-spacing:1.4px;
+  color:#20160a;background:var(--gold);padding:1px 5px;border-radius:4px;vertical-align:2px}

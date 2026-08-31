@@ -125,7 +125,7 @@ function renderInicio() {
       <div class="pgreet">¡Vamos, ${esc(p.name)}! <span class="lvlchip">${L.level}</span></div>
       <div class="prank">🏃 ${p.title ? esc(LOOT_BY_ID[p.title].name) : 'Rookie Runner'}</div>
     </div>
-    <div class="streakchip"><div class="n">🔥 ${streak()}</div><div class="l">Day Streak</div></div>
+    <div class="streakchip"><div class="n">🔥 ${actividades()}</div><div class="l">Activities</div></div>
   </div>
 
   <div class="ringwrap">
@@ -149,9 +149,9 @@ function renderInicio() {
 
   <div class="duo">
     <div class="card"><div class="kv">
-      <div class="k">STREAK</div>
-      <div class="v">🔥 ${streak()} <small style="font-family:var(--fu);font-size:13px;color:var(--muted)">días</small></div>
-      <div class="s">Mejor: ${bestStreak()} días</div>
+      <div class="k">ACTIVIDADES</div>
+      <div class="v">🔥 ${actividades()} <small style="font-family:var(--fu);font-size:13px;color:var(--muted)">total</small></div>
+      <div class="s">${actividadesSemana()} esta semana</div>
     </div></div>
     <div class="card"><div class="kv">
       <div class="k">XP TOTAL</div>
@@ -645,8 +645,8 @@ function renderTrainer() {
   return `
   <div class="sub">MODO COACH · ${esc(ST.profile.name)}</div>
   <div class="tstat">
-    <div><div class="kv"><div class="k">RACHA</div><div class="v" style="color:var(--orange)">🔥 ${streak()}</div>
-      <div class="s">Mejor: ${bestStreak()}</div></div></div>
+    <div><div class="kv"><div class="k">ACTIVIDADES</div><div class="v" style="color:var(--orange)">🔥 ${actividades()}</div>
+      <div class="s">${actividadesSemana()} esta semana</div></div></div>
     <div><div class="kv"><div class="k">ADHERENCIA</div>
       <div class="v" style="color:var(--green2)">${cons.total ? Math.round(cons.hechas/cons.total*100) : 0}%</div>
       <div class="s">${cons.hechas}/${cons.total} sesiones</div></div></div>
@@ -810,7 +810,8 @@ function sheetPerfil() {
     <div class="mrow2">
       <button class="btnbig b" data-act="guardar-perfil">GUARDAR</button>
       <button class="btnw" style="margin:0" data-act="close">Cerrar</button>
-    </div>`);
+    </div>
+    <button class="btnw" style="margin:8px 0 0" data-act="cambiar">⇄ Cambiar de perfil</button>`);
 
   /* La foto se reduce a 256px antes de guardarse: localStorage aguanta
      unos 5 MB y una foto de cámara sin reducir se lo come entero. */
@@ -860,6 +861,43 @@ function modalLogRun() {
     </div>`);
 }
 
+/* ── ¿QUIÉN ERES? ─────────────────────────────────────────────
+   Antes de nada se elige la persona. El Coach es el GM: existe siempre
+   y es el único que puede crear atletas. Sin contraseñas — esto es una
+   libreta compartida entre gente que se conoce, no un banco; pedir
+   claves aquí solo estorbaría antes de salir a correr. */
+function pantallaQuienEres() {
+  const gente = personas();
+  const tarjeta = p => {
+    const datos = (ST.atletas || {})[p.id];
+    const sub = p.coach
+      ? 'Crea atletas y arma el plan'
+      : datos ? `${(datos.runs || []).length} actividades` : 'Primera vez — empieza con 300 💎';
+    return `<button class="who ${p.coach ? 'gm' : ''}" data-act="entrar" data-id="${p.id}">
+      <div class="wav">${p.coach ? '★' : esc(p.name.slice(0,1).toUpperCase())}</div>
+      <div class="wb">
+        <div class="wn">${esc(p.name)}${p.coach ? ' <i class="gmtag">GM</i>' : ''}</div>
+        <div class="ws">${sub}</div>
+      </div>
+      <div class="chev">›</div>
+    </button>`;
+  };
+
+  return `
+  <div class="whowrap">
+    <img class="wlogo" src="art/logo.png" alt="RUNBOUND" onerror="this.style.display='none'">
+    <div class="wtitle">¿QUIÉN ERES?</div>
+    <div class="wsub">Escoge tu perfil para entrar</div>
+    <div class="wlist">${gente.map(tarjeta).join('')}</div>
+    ${gente.length === 1
+      ? `<div class="hint" style="text-align:center;margin-top:14px">
+           Todavía no hay atletas. Entra como <b style="color:var(--gold2)">Coach</b> y créalos
+           en Modo Coach — aparecerán aquí para que cada quien entre con lo suyo.
+         </div>`
+      : ''}
+  </div>`;
+}
+
 /* ── SIGN-IN BONUS ────────────────────────────────────────────
    Siete casillas: seis de 100 💎 y la última un cofre gratis.
    El día reclamable brilla; los cobrados se apagan con un ✓.
@@ -867,6 +905,13 @@ function modalLogRun() {
    En móvil las siete casillas en fila quedarían de ~50px — ilegibles
    con el gema y el número dentro. Por eso van 3×2 y el día 7 a lo
    ancho, que además le da el peso visual que merece. */
+/* El bonus se abre SOLO al entrar si hay algo sin reclamar. Dejarlo
+   escondido detrás de un toque hacía que pasara desapercibido — que es
+   justo lo que reportaste. */
+function avisarSignin() {
+  if (ST.quienSoy && signinPendiente()) setTimeout(modalSignin, 420);
+}
+
 function modalSignin() {
   const s = signinEstado();
   const prox = signinProximo();
@@ -1193,7 +1238,7 @@ function renderTop() {
   const t = TITLES[VIEW];
   const back = (VIEW === 'trainer');
   return `
-    <button class="topbtn" data-act="${back ? 'go' : 'menu'}" ${back ? 'data-view="entrenamiento"' : ''}>${back ? '‹' : '☰'}</button>
+    <button class="topbtn" data-act="${back ? 'go' : (soyCoach() ? 'menu' : 'cambiar')}" ${back ? 'data-view="entrenamiento"' : ''}>${back ? '‹' : (soyCoach() ? '☰' : '⇄')}</button>
     ${t ? `<div class="screenttl">${t}</div>` : '<div class="brand">RUNBOUND</div>'}
     <button class="wallet" data-act="go" data-view="tienda">
       <span class="s">💎 ${U.n(ST.profile.shards)}</span><i></i>
@@ -1211,8 +1256,20 @@ function renderNav() {
 }
 
 function render() {
+  /* Sin perfil elegido no hay app: ni topbar ni nav, solo la pregunta.
+     Pintar el resto significaría enseñar datos de nadie. */
+  if (!ST.quienSoy) {
+    $('#topbar').innerHTML = '';
+    $('#screens').innerHTML = `<div class="screen on">${pantallaQuienEres()}</div>`;
+    $('#nav').innerHTML = '';
+    document.body.style.backgroundImage = '';
+    return;
+  }
+
   const map = { inicio:renderInicio, desafios:renderDesafios, competir:renderCompetir,
                 entrenamiento:renderEntrenamiento, tienda:renderTienda, trainer:renderTrainer };
+  /* Modo Coach es solo del GM: si un atleta llega ahí, se le manda a Home. */
+  if (VIEW === 'trainer' && !soyCoach()) VIEW = 'inicio';
   $('#topbar').innerHTML = renderTop();
   $('#screens').innerHTML = `<div class="screen on">${(map[VIEW] || renderInicio)()}</div>`;
   renderNav();
@@ -1306,6 +1363,8 @@ document.addEventListener('click', e => {
       break;
     }
     case 'menu':    VIEW = 'trainer'; render(); break;
+    case 'entrar':  entrarComo(id); VIEW = 'inicio'; render(); avisarSignin(); break;
+    case 'cambiar': salirDePerfil(); closeModal(); render(); break;
     case 'log':     modalLogRun(); break;
     case 'perfil':  sheetPerfil(); break;
     case 'explica': modalExplica(); break;
