@@ -141,6 +141,51 @@ function textoParams(p) {
 /* ¿Es una sesión del plan? (del coach o del plan por defecto) */
 const esSesion = c => c.by === 'trainer' || c.by === 'plan';
 
+/* ── A QUIÉN LE TOCA CADA RETO ────────────────────────────
+   `c.para` es una lista de ids de atletas. Sin `para` (o vacío) el reto
+   es para todo el mundo — así los retos que ya existían siguen valiendo
+   para todos sin tener que migrarlos.
+
+   Esto filtra lo que VE y lo que PUNTÚA cada quien: si el coach le puso
+   Long Run solo a Leo, a Marisol no puede bajarle la adherencia una
+   sesión que nunca le asignaron. */
+function esParaMi(c, quien = ST.quienSoy) {
+  if (!c.para || !c.para.length) return true;
+  return c.para.includes(quien);
+}
+function misRetos(quien = ST.quienSoy) {
+  return (ST.challenges || []).filter(c => esParaMi(c, quien));
+}
+/* Nombres de a quién va dirigido, para pintarlo en Modo Coach. */
+function textoPara(c) {
+  if (!c.para || !c.para.length) return 'Todos';
+  return c.para.map(id => nombreDe(id)).join(', ');
+}
+
+/* ── DÍAS DE LA SEMANA ────────────────────────────────────
+   `c.dia` (0=lunes … 6=domingo) es cuándo TOCA la sesión dentro del
+   plan semanal. Es una guía de calendario, no una cárcel: el reto se
+   sigue evaluando en toda la semana, así que hacer el martes lo que
+   tocaba el lunes cuenta igual. Castigar eso empujaría a saltarse la
+   sesión en vez de recuperarla. */
+const DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+const DIAS_LARGO = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
+/* Lunes = 0, para que cuadre con D.startOfWeek(). */
+const diaHoy = () => (new Date().getDay() + 6) % 7;
+
+/* Lo que toca hoy según el plan: primero la sesión del día, y si no hay,
+   cualquier cosa pendiente del día. */
+function sesionDeHoy() {
+  const d = diaHoy();
+  const mias = misRetos();
+  const delDia = mias.filter(c => c.dia === d);
+  const pendiente = delDia.find(c => !evalChallenge(c).done);
+  if (pendiente) return pendiente;
+  if (delDia.length) return delDia[0];
+  return mias.find(c => c.period === 'daily' && !evalChallenge(c).done)
+      || mias.find(c => c.period === 'daily');
+}
+
 /* ── evaluación de retos ──────────────────────────────────── */
 /* Devuelve { cur, target, pct, done, label } — `cur` en unidad cruda. */
 function evalChallenge(c) {

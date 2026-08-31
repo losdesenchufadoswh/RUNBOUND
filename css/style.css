@@ -650,3 +650,26 @@ img{max-width:100%}
 /* El TIME se rellena solo; se marca para que se note que es derivado. */
 .fld.calc input{color:var(--green2)}
 .fld.calc .fu2{color:var(--dim);font-size:9.5px}
+
+/* ══ ASIGNACIÓN Y PLAN SEMANAL ════════════════════════════════ */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.chip{padding:6px 11px;border-radius:99px;background:var(--card2);border:1px solid var(--line);
+  color:var(--muted);font-size:12px;font-weight:600;line-height:1}
+.chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+
+/* La semana entera de un vistazo: se nota enseguida si un día está vacío. */
+.psemana{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.pdia{background:var(--card);border:1px solid var(--line);border-radius:9px;
+  padding:6px 3px;min-height:74px;display:flex;flex-direction:column;gap:3px;align-items:center}
+.pdia.hoy{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+.pdia.lleno{background:linear-gradient(180deg,#14243d,#0e1726)}
+.pdl{font-family:var(--fu);font-weight:700;font-size:9px;letter-spacing:.6px;color:var(--muted)}
+.pdia.hoy .pdl{color:var(--blue2)}
+.pses{width:100%;background:rgba(47,155,255,.14);border:1px solid rgba(47,155,255,.32);
+  border-radius:6px;padding:3px 2px;text-align:center}
+.psn{font-size:8.5px;font-weight:700;line-height:1.15;color:var(--text);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.psq{font-size:7.5px;color:var(--muted);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pvacio{color:var(--dim);font-size:12px;margin-top:6px}
+.cpara{font-size:10.5px;color:var(--blue2);margin-top:3px}

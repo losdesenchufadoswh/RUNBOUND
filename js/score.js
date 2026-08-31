@@ -106,7 +106,7 @@ function scoreMejora(period) {
 
    Aparte se guarda `dias` solo para mostrarlo, no puntúa por sí solo. */
 function scoreAdherencia(period) {
-  const plan = ST.challenges.filter(c => c.period === period && esSesion(c));
+  const plan = misRetos().filter(c => c.period === period && esSesion(c));
   const [a, b] = periodBounds(period, 0);
   const dias = new Set(runsBetween(a, b).filter(r => !r.manual).map(r => D.key(r.start_iso))).size;
 
@@ -120,7 +120,7 @@ function scoreAdherencia(period) {
    Metas de volumen (distancia, elevación, racha). Las sesiones del plan
    NO cuentan aquí — ya puntúan en Adherencia y contarían doble. */
 function scoreObjetivos(period) {
-  const cs = ST.challenges.filter(c => c.period === period && !esSesion(c));
+  const cs = misRetos().filter(c => c.period === period && !esSesion(c));
   if (!cs.length) return { pts: 0, hechos: 0, total: 0 };
   const hechos = cs.filter(c => evalChallenge(c).done).length;
   return { pts: Math.round(hechos / cs.length * CAPS.objetivos), hechos, total: cs.length };

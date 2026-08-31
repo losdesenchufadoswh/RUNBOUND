@@ -13,6 +13,8 @@ let SHOP_TAB = 'cofres';
 let INV_TAB = 'title';
 let TRAINER_TAB = 'daily';
 let EDITING = null;
+let PARA = [];          // a qué atletas va la sesión que se está creando
+let DIA_SEL = null;     // qué día de la semana le toca (null = cualquiera)
 
 const NAV = [
   { id:'inicio',        ic:'🏠', label:'Home' },
@@ -110,8 +112,7 @@ function renderInicio() {
   const s = scoreTotal(PERIOD);
   const pct = Math.round(s.total / 1000 * 100);
   const fr = p.frame ? 'f-' + LOOT_BY_ID[p.frame].slug : '';
-  const hoy = ST.challenges.find(c => c.period === 'daily' && !evalChallenge(c).done) ||
-              ST.challenges.find(c => c.period === 'daily');
+  const hoy = sesionDeHoy();
   const R = 76, C = 2 * Math.PI * R;
 
   return `
@@ -202,10 +203,10 @@ function ligaFin() {
 
 /* ═══ DESAFÍOS ════════════════════════════════════════════ */
 function renderDesafios() {
-  const cs = ST.challenges.filter(c => c.period === CHAL_TAB);
+  const cs = misRetos().filter(c => c.period === CHAL_TAB);
   const tabs = ['daily','weekly','monthly','yearly'].map(k => ({
     k, l: PERIOD_LABEL[k],
-    pip: ST.challenges.some(c => c.period === k && evalChallenge(c).done && !ST.claimed[c.id])
+    pip: misRetos().some(c => c.period === k && evalChallenge(c).done && !ST.claimed[c.id])
   }));
 
   const fila = c => {
@@ -623,6 +624,34 @@ function rewardTile(i, showLocked, clickable) {
 }
 
 /* ═══ TRAINER (plan del coach) ════════════════════════════ */
+/* Rejilla de la semana: qué le toca a quién cada día. Se ve de un
+   vistazo si el plan está cargado un día y vacío otro. */
+function planSemanal() {
+  const semanales = (ST.challenges || []).filter(c => c.period === 'weekly');
+  const hoy = diaHoy();
+  const cols = DIAS.map((d, i) => {
+    const sesiones = semanales.filter(c => c.dia === i);
+    return `<div class="pdia ${i === hoy ? 'hoy' : ''} ${sesiones.length ? 'lleno' : ''}">
+      <div class="pdl">${d}</div>
+      ${sesiones.length
+        ? sesiones.map(c => `<button class="pses" data-act="edit-ch" data-id="${c.id}">
+            <div class="psn">${esc(c.name)}</div>
+            <div class="psq">${esc(textoPara(c))}</div>
+          </button>`).join('')
+        : '<div class="pvacio">—</div>'}
+    </div>`;
+  }).join('');
+
+  const sinDia = semanales.filter(c => c.dia == null);
+  return `
+  <div class="sect"><h2>PLAN DE LA SEMANA</h2>
+    <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">${semanales.length} SESIONES</span></div>
+  <div class="psemana">${cols}</div>
+  ${sinDia.length
+    ? `<div class="hint" style="margin-top:8px">Sin día fijo: ${sinDia.map(c => esc(c.name)).join(' · ')}</div>`
+    : ''}`;
+}
+
 function renderTrainer() {
   const asignados = ST.challenges.filter(c => c.by === 'trainer');
   const cons = scoreAdherencia('weekly');
@@ -636,7 +665,8 @@ function renderTrainer() {
         <div style="font-family:var(--fu);font-weight:700;font-size:9.5px;letter-spacing:1.4px;color:var(--blue2)">
           ${PERIOD_LABEL[c.period].toUpperCase()}</div>
         <div class="cn">${esc(c.name)}</div>
-        <div class="cd" style="margin:1px 0 0">${progressLabel(c, ev)} · ${c.xp} XP · vence ${D.until(c.expires)}</div>
+        <div class="cd" style="margin:1px 0 0">${progressLabel(c, ev)} · ${c.xp} XP</div>
+        <div class="cpara">👥 ${esc(textoPara(c))}${c.dia != null ? ' · 📅 ' + DIAS[c.dia] : ''}</div>
       </div>
       <button class="icob ed" data-act="edit-ch" data-id="${c.id}">✏️</button>
       <button class="icob del" data-act="del-ch" data-id="${c.id}">🗑️</button>
@@ -675,8 +705,31 @@ function renderTrainer() {
          solo apareces tú.</div>`}
   </div>
 
+  ${planSemanal()}
+
   <div class="sect"><h2>CREATE SESSION</h2></div>
   ${segmented(TRAINER_TAB, tabs, 'ttab')}
+
+  <div class="fld txt" style="margin-bottom:9px"><div class="fl">👥 PARA QUIÉN</div>
+    <div class="chips">
+      <button class="chip ${!PARA.length ? 'on' : ''}" data-act="para" data-id="">Todos</button>
+      ${(ST.roster || []).map(a =>
+        `<button class="chip ${PARA.includes(a.id) ? 'on' : ''}" data-act="para" data-id="${a.id}">${esc(a.name)}</button>`).join('')}
+    </div>
+    ${!(ST.roster || []).length
+      ? '<div class="hint" style="margin-top:6px">Añade atletas arriba para poder asignarles sesiones.</div>' : ''}
+  </div>
+
+  ${TRAINER_TAB === 'weekly' ? `
+  <div class="fld txt" style="margin-bottom:9px"><div class="fl">📅 QUÉ DÍA TOCA</div>
+    <div class="chips">
+      <button class="chip ${DIA_SEL === null ? 'on' : ''}" data-act="diasel" data-id="">Cualquiera</button>
+      ${DIAS.map((d, i) =>
+        `<button class="chip ${DIA_SEL === i ? 'on' : ''}" data-act="diasel" data-id="${i}">${d}</button>`).join('')}
+    </div>
+    <div class="hint" style="margin-top:6px">El día es una guía del calendario: la sesión
+      se sigue pudiendo cumplir en toda la semana.</div>
+  </div>` : ''}
   <div class="fgrid">
     <div class="fld"><div class="fl">📏 DISTANCE</div><input id="f_dist" type="number" step="0.1" value="3.0"><div class="fu2">${U.distU()}</div></div>
     <div class="fld"><div class="fl">⏱️ PACE</div>
@@ -700,7 +753,8 @@ function renderTrainer() {
       <option value="runs">Cantidad de actividades</option>
       <option value="pace">Ritmo bajo X</option>
       <option value="elevation">Elevación acumulada</option>
-      <option value="streak">Días seguidos</option>
+      <option value="time">Tiempo en movimiento</option>
+      <option value="streak">Actividades completadas</option>
       <option value="cadence">Cadencia sobre X</option>
       <option value="hr">Actividades en zona FC</option>
       <option value="session">Sesión con parámetros (usa los campos de arriba)</option>
@@ -1225,8 +1279,8 @@ const toElevM = v => Number(v) / (ST.settings.units === 'mi' ? 3.28084 : 1);
 
 const TYPE_GOAL_LABEL = {
   distance:'distancia', single_distance:'una actividad larga', runs:'cantidad de actividades',
-  pace:'ritmo', elevation:'elevación', streak:'días seguidos', cadence:'cadencia',
-  hr:'zona de frecuencia cardiaca'
+  pace:'ritmo', elevation:'elevación', streak:'actividades completadas', cadence:'cadencia',
+  hr:'zona de frecuencia cardiaca', time:'tiempo en movimiento', session:'sesión del plan'
 };
 const HR_ZONES = { Z2:[110,135], Z3:[135,155], Z4:[155,172], Z5:[172,195] };
 
@@ -1252,6 +1306,7 @@ function saveChallenge() {
   switch (type) {
     case 'pace':      target = Number($('#f_pace').value); break;
     case 'elevation': target = toElevM($('#f_elev').value); break;
+    case 'time':      target = parseClock($('#f_time').value); break;
     case 'runs': case 'streak': target = Number($('#f_dist').value) || 1; break;
     case 'cadence':   target = Number($('#f_dist').value) || 170; break;
     case 'hr': {
@@ -1283,8 +1338,10 @@ function saveChallenge() {
   const exp = { daily:1, weekly:7, monthly:30, yearly:365 }[TRAINER_TAB];
   const ch = {
     id: EDITING || 'c_t' + Math.random().toString(36).slice(2, 8),
-    period:TRAINER_TAB, name, desc:$('#f_desc').value.trim() || `Meta de ${TYPE_GOAL_LABEL[type]}`,
+    period:TRAINER_TAB, name, desc:$('#f_desc').value.trim() || (TYPE_GOAL_LABEL[type] ? `Meta de ${TYPE_GOAL_LABEL[type]}` : 'Sesión asignada por tu coach'),
     goal, params:PARAMS, xp, shards:Math.round(xp/5), by:'trainer',
+    para: PARA.slice(),
+    dia: TRAINER_TAB === 'weekly' ? DIA_SEL : null,
     expires:new Date(Date.now() + exp*864e5).toISOString()
   };
   if (EDITING) {
@@ -1292,12 +1349,16 @@ function saveChallenge() {
     ST.challenges[i] = { ...ST.challenges[i], ...ch };
     toast('💾 Desafío actualizado');
   } else { ST.challenges.push(ch); toast('✦ Desafío creado y asignado'); }
-  EDITING = null; save(); render();
+  EDITING = null; PARA = []; DIA_SEL = null; save(); render();
 }
 
 function editChallenge(id) {
   const c = ST.challenges.find(x => x.id === id); if (!c) return;
-  closeModal(); EDITING = id; TRAINER_TAB = c.period; VIEW = 'trainer'; render();
+  closeModal(); EDITING = id; TRAINER_TAB = c.period;
+  /* Recuperar a quién iba y qué día, si no editar borraría la asignación. */
+  PARA = (c.para || []).slice();
+  DIA_SEL = (c.dia == null) ? null : c.dia;
+  VIEW = 'trainer'; render();
   $('#f_name').value = c.name; $('#f_desc').value = c.desc;
   $('#f_goal').value = c.goal.type; $('#f_xp').value = c.xp;
   if (c.goal.type === 'pace') $('#f_pace').innerHTML = selectPace(c.goal.target);
@@ -1350,7 +1411,7 @@ const TITLES = {
 };
 
 function renderTop() {
-  const ready = ST.challenges.some(c => evalChallenge(c).done && !ST.claimed[c.id]);
+  const ready = misRetos().some(c => evalChallenge(c).done && !ST.claimed[c.id]);
   const t = TITLES[VIEW];
   const back = (VIEW === 'trainer');
   return `
@@ -1363,7 +1424,7 @@ function renderTop() {
 }
 
 function renderNav() {
-  const ready = ST.challenges.some(c => evalChallenge(c).done && !ST.claimed[c.id]);
+  const ready = misRetos().some(c => evalChallenge(c).done && !ST.claimed[c.id]);
   $('#nav').innerHTML = NAV.map(n => `
     <button class="${VIEW === n.id ? 'on' : ''}" data-act="go" data-view="${n.id}">
       ${n.id === 'desafios' && ready ? '<i class="pip"></i>' : ''}
@@ -1410,6 +1471,13 @@ document.addEventListener('click', e => {
     case 'stab':    SHOP_TAB = t.dataset.tab; render(); break;
     case 'itab':    INV_TAB = t.dataset.tab; render(); break;
     case 'ttab':    TRAINER_TAB = t.dataset.tab; render(); break;
+    case 'para': {
+      /* "Todos" es la ausencia de destinatarios, no un id más. */
+      if (!id) PARA = [];
+      else PARA = PARA.includes(id) ? PARA.filter(x => x !== id) : [...PARA, id];
+      render(); break;
+    }
+    case 'diasel':  DIA_SEL = id === '' ? null : Number(id); render(); break;
     case 'signin':   modalSignin(); break;
     case 'reclamar-signin': {
       const r = reclamarSignin();
