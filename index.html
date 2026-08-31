@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070b14">
+<title>RUNBOUND</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🏃</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="splash" id="splash">
+  <img class="slogo" src="art/logo.png" alt="RUNBOUND" onerror="this.style.display='none'">
+  <div class="sbar"><i></i></div>
+  <div class="stxt">RECUPERANDO DATA</div>
+</div>
+
+<div id="app">
+  <div class="topbar" id="topbar"></div>
+  <div id="screens"></div>
+</div>
+
+<nav class="nav" id="nav"></nav>
+<div class="ov" id="ov"><div class="modal" id="modal"></div></div>
+<div class="opening" id="opening"></div>
+<div class="toast" id="toast"></div>
+
+<!-- Stubs antes de Firebase -->
+<script>
+window.showLoginScreen = () => console.log('[STUB] showLoginScreen');
+window.render = () => console.log('[STUB] render');
+window.toast = msg => console.log('[STUB] toast:', msg);
+window.openModal = html => console.log('[STUB] openModal');
+</script>
+
+<!-- Firebase Compat -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+
+<!-- Loot, data, engine, score -->
+<script src="js/loot.js"></script>
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/score.js"></script>
+
+<!-- Firebase config -->
+<script src="js/firebase-config.js"></script>
+
+<!-- App main -->
+<script src="js/app.js"></script>
+
+<!-- Boot: esperar a que CURRENT_USER esté listo, luego renderizar -->
+<script>
+let bootDone = false;
+function tryBoot() {
+  if (bootDone || !CURRENT_USER) return;
+  bootDone = true;
+  
+  load();
+  render();
+  
+  setTimeout(() => {
+    const s = document.getElementById('splash');
+    if (s) {
+      s.classList.add('off');
+      setTimeout(() => s.remove(), 700);
+    }
+  }, 5000);
+}
+
+/* Intentar cada 100ms hasta que CURRENT_USER exista */
+const bootInterval = setInterval(() => { tryBoot(); if (bootDone) clearInterval(bootInterval); }, 100);
+
+/* Fallback: si a los 3s no se cargó, fuerza el boot */
+setTimeout(() => { if (!bootDone) tryBoot(); }, 3000);
+</script>
+</body>
+</html>

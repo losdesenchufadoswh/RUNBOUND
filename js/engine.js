@@ -1,0 +1,358 @@
+/* ═══════════════════════════════════════════════════════════
+   RUNBOUND · Motor
+   Todo se DERIVA de ST.runs. Nada de progreso se guarda a mano,
+   así que da igual si el run entró manual o por Strava después.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── nivel / XP ───────────────────────────────────────────── */
+const xpNeeded = L => L * 300 + 600;
+
+function levelOf(totalXp) {
+  let L = 1, left = totalXp;
+  while (left >= xpNeeded(L) && L < 999) { left -= xpNeeded(L); L++; }
+  return { level: L, into: left, need: xpNeeded(L) };
+}
+
+/* ── ventanas de tiempo ───────────────────────────────────── */
+function windowStart(period) {
+  const n = new Date();
+  if (period === 'daily')   { const d = new Date(n); d.setHours(0,0,0,0); return d; }
+  if (period === 'weekly')  return D.startOfWeek(n);
+  if (period === 'monthly') return D.startOfMonth(n);
+  return D.startOfYear(n);
+}
+
+function runsIn(period) {
+  const from = windowStart(period);
+  return ST.runs.filter(r => !r.manual && new Date(r.start_iso) >= from);
+}
+
+/* ── streak ───────────────────────────────────────────────── */
+function streak() {
+  const days = new Set(ST.runs.filter(r => !r.manual).map(r => D.key(r.start_iso)));
+  let n = 0;
+  const d = new Date(); d.setHours(0,0,0,0);
+  if (!days.has(D.key(d))) d.setDate(d.getDate() - 1);   // hoy todavía cuenta si corriste ayer
+  while (days.has(D.key(d))) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+
+function bestStreak() {
+  const days = [...new Set(ST.runs.filter(r => !r.manual).map(r => D.key(r.start_iso)))].sort();
+  let best = 0, run = 0, prev = null;
+  for (const k of days) {
+    const d = new Date(k + 'T00:00:00');
+    run = (prev && (d - prev) === 864e5) ? run + 1 : 1;
+    best = Math.max(best, run); prev = d;
+  }
+  return best;
+}
+
+/* ── sesiones del plan ─────────────────────────────────────
+   Una sesión NO se cumple por salir a caminar: hay que cumplir los
+   parámetros que puso el coach. Todos son opcionales; solo se revisan
+   los que la sesión define.
+
+   params { dist_m, paceMax, minutes, elev_m, hrMin, hrMax }
+   La tolerancia del 10% existe porque nadie clava 2.50 millas exactas. */
+const TOL = 0.9;
+
+function cumpleParams(r, p) {
+  if (!p) return false;
+  if (r.manual) return false;
+  if (p.dist_m  && r.distance_m < p.dist_m * TOL) return false;
+  if (p.minutes && r.moving_s   < p.minutes * 60 * TOL) return false;
+  if (p.elev_m  && r.elev_m     < p.elev_m * TOL) return false;
+  if (p.paceMax && U.paceSec(r) > p.paceMax) return false;
+  /* La zona de pulso solo se revisa SI la actividad trae pulso. Mucha
+     gente camina sin banda; si esto fuera obligatorio quedarían fuera
+     de los 250 puntos de adherencia sin poder hacer nada. Se puede
+     endurecer por sesión con `hrObligatoria`. */
+  if (p.hrMin || p.hrMax) {
+    if (!r.avg_hr) return !p.hrObligatoria;
+    if (p.hrMin && r.avg_hr < p.hrMin) return false;
+    if (p.hrMax && r.avg_hr > p.hrMax) return false;
+  }
+  return true;
+}
+
+/* Texto legible de los parámetros, para que el atleta sepa qué le piden. */
+function textoParams(p) {
+  if (!p) return '';
+  const t = [];
+  if (p.dist_m)  t.push(`${U.dist(p.dist_m, 1)} ${U.distU()}`);
+  if (p.paceMax) t.push(`sub ${U.pace(p.paceMax)}/${U.distU().toLowerCase()}`);
+  if (p.minutes) t.push(`${p.minutes} min`);
+  if (p.elev_m)  t.push(`${U.elev(p.elev_m)} ${U.elevU()}`);
+  if (p.hrMin)   t.push(`HR ${p.hrMin}–${p.hrMax}`);
+  return t.join(' · ');
+}
+
+/* ¿Es una sesión del plan? (del coach o del plan por defecto) */
+const esSesion = c => c.by === 'trainer' || c.by === 'plan';
+
+/* ── evaluación de retos ──────────────────────────────────── */
+/* Devuelve { cur, target, pct, done, label } — `cur` en unidad cruda. */
+function evalChallenge(c) {
+  const rs = runsIn(c.period);
+  const g = c.goal;
+  let cur = 0, done = false, lower = false;
+
+  switch (g.type) {
+    case 'runs':
+      cur = rs.length; break;
+    case 'distance':
+      cur = rs.reduce((s, r) => s + r.distance_m, 0); break;
+    case 'single_distance':
+      cur = rs.reduce((m, r) => Math.max(m, r.distance_m), 0); break;
+    case 'elevation':
+      cur = rs.reduce((s, r) => s + r.elev_m, 0); break;
+    case 'time':
+      cur = rs.reduce((s, r) => s + r.moving_s, 0); break;
+    case 'streak':
+      cur = streak(); break;
+    case 'cadence':
+      cur = rs.reduce((m, r) => Math.max(m, r.cadence_spm || 0), 0); break;
+    case 'hr':
+      cur = rs.filter(r => r.avg_hr && r.avg_hr >= g.min && r.avg_hr <= g.max).length; break;
+    case 'session':
+      /* cuántas actividades del período cumplieron TODOS los parámetros */
+      cur = rs.filter(r => cumpleParams(r, c.params)).length; break;
+    case 'pace': {
+      lower = true;
+      const paces = rs.filter(r => r.distance_m > 400).map(r => U.paceSec(r));
+      cur = paces.length ? Math.min(...paces) : 0;
+      break;
+    }
+  }
+
+  if (lower) {
+    done = cur > 0 && cur <= g.target;
+    // en pace el progreso es "qué tan cerca estás por debajo del objetivo"
+    const pct = cur === 0 ? 0 : Math.min(100, Math.round((g.target / cur) * 100));
+    return { cur, target: g.target, pct, done, lower };
+  }
+  done = cur >= g.target;
+  return { cur, target: g.target, pct: Math.min(100, Math.round(cur / g.target * 100)), done, lower:false };
+}
+
+/* Texto de progreso según tipo de meta.
+   Un reto cumplido se muestra tope-con-tope (7/7, no 12/7) — pasarse
+   de la meta no es información útil y se lee como error. */
+function progressLabel(c, ev) {
+  const g = c.goal;
+  const cap = v => ev.done ? g.target : v;
+  switch (g.type) {
+    case 'session':return `${cap(ev.cur)} / ${g.target} SESSIONS`;
+    case 'runs':   return `${cap(ev.cur)} / ${g.target} ACTIVITIES`;
+    case 'streak': return `${cap(ev.cur)} / ${g.target} DAYS`;
+    case 'cadence':return `${Math.round(cap(ev.cur)) || 0} / ${g.target} SPM`;
+    case 'hr':     return `${cap(ev.cur)} / ${g.target} RUNS`;
+    case 'time':   return `${U.clock(cap(ev.cur))} / ${U.clock(g.target)}`;
+    case 'elevation': return `${U.elev(cap(ev.cur))} / ${U.elev(g.target)} ${U.elevU()}`;
+    case 'pace':   return `${U.pace(ev.cur)} / ${U.pace(g.target)} /${U.distU().toLowerCase()}`;
+    default:       return `${U.dist(cap(ev.cur))} / ${U.dist(g.target)} ${U.distU()}`;
+  }
+}
+
+/* ── MILLAS ────────────────────────────────────────────────
+   La moneda de la tienda son las millas que CORRISTE, no un número
+   que reparte un reto. Se derivan de ST.runs igual que todo lo demás;
+   lo único que se guarda es cuántas has gastado.
+
+   Consecuencia buscada: las millas son escasas de verdad. No se pueden
+   farmear reclamando retos — solo saliendo a moverte. */
+function millasCorridas() {
+  return ST.runs.filter(r => !r.manual)
+                .reduce((s, r) => s + U.mi(r.distance_m), 0);
+}
+function millasDisponibles() {
+  return Math.max(0, millasCorridas() - (ST.profile.millasGastadas || 0));
+}
+
+/* Compra directa de un cosmético con millas. */
+function comprarConMillas(id) {
+  const it = LOOT_BY_ID[id];
+  if (!it) return { ok:false, msg:'Ese objeto no existe' };
+  if (ST.collection[id]) return { ok:false, msg:'Ya tienes ese objeto' };
+  const precio = MILE_PRICE[it.r];
+  if (millasDisponibles() < precio)
+    return { ok:false, msg:`Te faltan ${Math.ceil(precio - millasDisponibles())} millas` };
+  ST.profile.millasGastadas = (ST.profile.millasGastadas || 0) + precio;
+  ST.collection[id] = 1;
+  ST.log.unshift({ t:new Date().toISOString(), kind:'buy',
+                   txt:`${it.name} comprado por ${precio} millas` });
+  save();
+  return { ok:true, item:it, precio };
+}
+
+/* ── XP total ganado (retos reclamados) ───────────────────── */
+function totalXp() {
+  return Object.keys(ST.claimed).reduce((s, id) => {
+    const c = ST.challenges.find(x => x.id === id);
+    return s + (c ? c.xp : 0);
+  }, 0) + (ST.profile.bonusXp || 0);
+}
+
+function claim(id) {
+  const c = ST.challenges.find(x => x.id === id);
+  if (!c || ST.claimed[id]) return null;
+  const ev = evalChallenge(c);
+  if (!ev.done) return null;
+  ST.claimed[id] = new Date().toISOString();
+  ST.profile.shards += c.shards;
+  ST.season.points  += Math.round(c.xp / 4);
+  ST.log.unshift({ t:new Date().toISOString(), kind:'claim', txt:`${c.name} · +${c.xp} XP · +${c.shards} shards` });
+  save();
+  return c;
+}
+
+/* ── PR / nemesis ─────────────────────────────────────────── */
+function prFor(dist_m, tol = 0.06) {
+  const cands = [
+    ...ST.archive.filter(a => Math.abs(a.dist_m - dist_m) / dist_m < tol)
+        .map(a => ({ time_s:a.time_s, src:a.name, date:a.date })),
+    ...ST.runs.filter(r => !r.manual && Math.abs(r.distance_m - dist_m) / dist_m < tol)
+        .map(r => ({ time_s:r.moving_s, src:'Entrenamiento', date:r.start_iso }))
+  ];
+  if (!cands.length) return null;
+  return cands.reduce((b, x) => x.time_s < b.time_s ? x : b);
+}
+
+/* Nemesis: tu PR es el boss. Su HP baja según tu tiempo proyectado
+   para esa distancia, sacado del pace de tus últimos 6 runs.
+
+   RACE_FACTOR convierte pace de entrenamiento → pace de carrera.
+   Un run de base normalmente va ~20% más lento que el pace de 5K, así
+   que sin este factor el proyectado siempre sale peor que el PR y la
+   barra se queda clavada en 100%. Es el número a calibrar con data real. */
+const RACE_FACTOR = 0.80;
+
+function nemesis(dist_m = 5000) {
+  const pr = prFor(dist_m);
+  if (!pr) return null;
+  const recent = ST.runs.filter(r => !r.manual && r.distance_m > 1600).slice(0, 6);
+  if (!recent.length) return null;
+  const avgPace = recent.reduce((s, r) => s + r.moving_s / r.distance_m, 0) / recent.length;
+  const projected = avgPace * RACE_FACTOR * dist_m;
+  /* HP 100% = proyectado 8% más lento que el PR o peor. HP 0% = ya lo igualaste. */
+  const gap = (projected - pr.time_s) / pr.time_s;
+  const hp = Math.max(0, Math.min(100, Math.round(gap / 0.08 * 100)));
+  return { pr, projected, hp, dist_m };
+}
+
+/* ── gacha ────────────────────────────────────────────────── */
+function rollRarity(rates) {
+  const g = ST.gacha;
+  if (g.sinceMythic + 1 >= PITY.mythic && (rates.mythic ?? 0) >= 0) return 'mythic';
+  if (g.sinceEpic + 1 >= PITY.epic) return (rates.mythic && Math.random() < 0.05) ? 'mythic' : 'epic';
+
+  const pool = Object.entries(rates).filter(([, w]) => w > 0);
+  const total = pool.reduce((s, [, w]) => s + w, 0);
+  let x = Math.random() * total;
+  for (const [k, w] of pool) { if ((x -= w) <= 0) return k; }
+  return pool[0][0];
+}
+
+function pickItem(rarity, filter) {
+  let pool = LOOT.filter(i => i.r === rarity);
+  if (filter && filter.type) pool = pool.filter(i => i.type === filter.type);
+  if (!pool.length) pool = LOOT.filter(i => i.r === rarity);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function openPack(pack) {
+  if (ST.profile.shards < pack.cost) return { error:'shards' };
+  ST.profile.shards -= pack.cost;
+
+  const results = [];
+  for (let i = 0; i < pack.pulls; i++) {
+    let rarity = rollRarity(pack.rates);
+    /* garantía del x10: si es la última y no salió Epic+, forzarla */
+    if (pack.guarantee && i === pack.pulls - 1 && !results.some(r => r.item.r !== 'rare')) {
+      rarity = pack.guarantee;
+    }
+    const item = pickItem(rarity, pack.pool);
+
+    ST.gacha.pulls++;
+    ST.gacha.sinceEpic   = (rarity === 'rare') ? ST.gacha.sinceEpic + 1 : 0;
+    ST.gacha.sinceMythic = (rarity === 'mythic') ? 0 : ST.gacha.sinceMythic + 1;
+
+    const owned = ST.collection[item.id] || 0;
+    const isNew = owned === 0;
+    ST.collection[item.id] = owned + 1;
+
+    let dust = 0;
+    if (!isNew) { dust = RARITY[item.r].dust; ST.profile.shards += dust; }
+    results.push({ item, isNew, dust });
+  }
+  ST.log.unshift({ t:new Date().toISOString(), kind:'summon',
+    txt:`${pack.name} · ${results.length} objeto(s)` });
+  save();
+  return { results };
+}
+
+/* ── equipar ──────────────────────────────────────────────── */
+function equip(id) {
+  const it = LOOT_BY_ID[id];
+  if (!it || !ST.collection[id]) return;
+  const slot = it.type;                      // title | avatar | frame | background
+  ST.profile[slot] = (ST.profile[slot] === id) ? null : id;
+  save();
+}
+
+/* ── métricas agregadas ───────────────────────────────────── */
+function totals(period) {
+  const rs = runsIn(period);
+  return {
+    dist: rs.reduce((s, r) => s + r.distance_m, 0),
+    time: rs.reduce((s, r) => s + r.moving_s, 0),
+    elev: rs.reduce((s, r) => s + r.elev_m, 0),
+    runs: rs.length
+  };
+}
+
+/* Leaderboard: rivales son mock hasta que exista backend.
+   Nunca mezclar aquí data cruda de Strava de otra persona. */
+function leaderboard() {
+  const me = totals('monthly').dist;
+  const seedv = [1.42, 1.31, 1.19, 0.86, 0.71];
+  const rows = RIVALS.map((r, i) => ({ ...r, dist: me * seedv[i], me:false }));
+  rows.push({ name:'Tú', em:'🏃', dist: me, me:true });
+  return rows.sort((a, b) => b.dist - a.dist).map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
+/* ── entrada de runs ──────────────────────────────────────── */
+function addRun(r) {
+  ST.runs.unshift(newRun(r));
+  ST.runs.sort((a, b) => new Date(b.start_iso) - new Date(a.start_iso));
+  ST.log.unshift({ t:new Date().toISOString(), kind:'run',
+    txt:`Run registrado · ${U.dist(r.distance_m)} ${U.distU()}` });
+  save();
+}
+
+/* ═══ HOOK PARA STRAVA (fase 2) ═══════════════════════════════
+   Cuando llegue el webhook, el backend hará:
+
+     const a = await fetchActivity(id, athleteToken);
+     addRun(fromStrava(a));
+
+   y NADA más de la app cambia. Ese es todo el punto de esta capa. */
+function fromStrava(a) {
+  return newRun({
+    distance_m: a.distance,
+    moving_s:   a.moving_time,
+    elapsed_s:  a.elapsed_time,
+    avg_hr:     a.average_heartrate ?? null,
+    max_hr:     a.max_heartrate ?? null,
+    /* Strava reporta cadencia POR PIERNA → ×2 para spm real */
+    cadence_spm: a.average_cadence ? Math.round(a.average_cadence * 2) : null,
+    elev_m:     a.total_elevation_gain || 0,
+    start_iso:  a.start_date_local,
+    tz:         a.timezone,
+    source:     'strava',
+    external_id: String(a.id),
+    /* actividades subidas a mano en Strava no otorgan recompensas */
+    manual:     !!a.manual
+  });
+}
