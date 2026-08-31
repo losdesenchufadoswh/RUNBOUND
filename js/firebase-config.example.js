@@ -1,6 +1,13 @@
-/* Firebase config EXAMPLE — NO COMMITEAR credenciales reales
-   Para desarrollo: copia esto a firebase-config-dev.js (gitignored) y llena con tus credenciales
-   Para Vercel: configura env vars en el dashboard de Vercel */
+/* Plantilla de firebase-config.js — copia esto y llena con lo tuyo.
+
+   El config REAL sí va commiteado, a propósito. RUNBOUND es estático puro
+   (sin build), así que el navegador carga este archivo tal cual: las env
+   vars de Vercel no se pueden inyectar aquí, no hay quién las sustituya.
+
+   Y no hace falta esconderlo: la apiKey web de Firebase es un
+   IDENTIFICADOR, no un secreto. Lo que protege tus datos son las Security
+   Rules ($uid === auth.uid) y los dominios autorizados en la consola.
+   Si esas dos están bien, publicar el config no abre nada. */
 
 firebase.initializeApp({
   apiKey: "YOUR_API_KEY",
