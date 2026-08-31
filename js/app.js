@@ -679,8 +679,10 @@ function renderTrainer() {
   ${segmented(TRAINER_TAB, tabs, 'ttab')}
   <div class="fgrid">
     <div class="fld"><div class="fl">📏 DISTANCE</div><input id="f_dist" type="number" step="0.1" value="3.0"><div class="fu2">${U.distU()}</div></div>
-    <div class="fld"><div class="fl">⏱️ PACE</div><input id="f_pace" type="text" value="12'00&quot;"><div class="fu2">/${U.distU()}</div></div>
-    <div class="fld"><div class="fl">⌛ TIME</div><input id="f_time" type="text" value="36:00"><div class="fu2">MM:SS</div></div>
+    <div class="fld"><div class="fl">⏱️ PACE</div>
+      <select id="f_pace" class="pacesel">${selectPace()}</select>
+      <div class="fu2">/${U.distU()}</div></div>
+    <div class="fld calc"><div class="fl">⌛ TIME</div><input id="f_time" type="text" value="36:00"><div class="fu2" id="f_timecalc">3 ${U.distU().toLowerCase()} × 12'00"</div></div>
     <div class="fld"><div class="fl">⛰️ ELEVATION</div><input id="f_elev" type="number" value="300"><div class="fu2">${U.elevU()}</div></div>
     <div class="fld"><div class="fl">❤️ HR ZONE</div>
       <select id="f_hr"><option value="">Ninguna</option><option>Z2</option><option selected>Z3</option><option>Z4</option><option>Z5</option></select>
@@ -1186,6 +1188,38 @@ function parseClock(s) {
   return Number(s) || 0;
 }
 function parsePace(s) { const m = String(s).match(/(\d+)\D+(\d+)/); return m ? +m[1]*60 + +m[2] : 0; }
+
+/* ── Paces del coach, de 30 en 30 segundos ────────────────────
+   Escribir 12'00" a mano invita a erratas y a paces raros. La lista va
+   de 6:00 a 22:00 porque el rango tiene que cubrir desde quien corre
+   fuerte hasta quien camina — RUNBOUND no es solo para corredores.
+   El `value` son SEGUNDOS, así no hay que parsear nada al guardar. */
+const PACE_MIN = 6 * 60, PACE_MAX = 22 * 60, PACE_PASO = 30;
+const PACE_DEFECTO = 12 * 60;
+const PACE_OPCIONES = (() => {
+  const out = [];
+  for (let s = PACE_MIN; s <= PACE_MAX; s += PACE_PASO) out.push(s);
+  return out;
+})();
+function selectPace(sel = PACE_DEFECTO) {
+  /* Un pace guardado que no caiga en la rejilla se acerca al más próximo. */
+  const cerca = PACE_OPCIONES.reduce((a, b) => Math.abs(b - sel) < Math.abs(a - sel) ? b : a);
+  return PACE_OPCIONES.map(s =>
+    `<option value="${s}"${s === cerca ? ' selected' : ''}>${U.pace(s)}</option>`).join('');
+}
+
+/* Tiempo = distancia × pace. Se recalcula al mover cualquiera de los dos,
+   pero el campo sigue editable: un coach puede querer "30 minutos" sin
+   fijar distancia, y bloquearlo se lo impediría. */
+function recalcTiempo() {
+  const d = Number($('#f_dist') && $('#f_dist').value);
+  const p = Number($('#f_pace') && $('#f_pace').value);
+  const campo = $('#f_time');
+  if (!campo || !d || !p) return;
+  campo.value = U.clock(d * p);
+  const nota = $('#f_timecalc');
+  if (nota) nota.textContent = `${d} ${U.distU().toLowerCase()} × ${U.pace(p)}`;
+}
 const toM = v => Number(v) * (ST.settings.units === 'mi' ? M_PER_MI : 1000);
 const toElevM = v => Number(v) / (ST.settings.units === 'mi' ? 3.28084 : 1);
 
@@ -1216,7 +1250,7 @@ function saveChallenge() {
   const type = $('#f_goal').value, xp = Number($('#f_xp').value) || 250;
   const goal = { type }; let target; let PARAMS = null;
   switch (type) {
-    case 'pace':      target = parsePace($('#f_pace').value); break;
+    case 'pace':      target = Number($('#f_pace').value); break;
     case 'elevation': target = toElevM($('#f_elev').value); break;
     case 'runs': case 'streak': target = Number($('#f_dist').value) || 1; break;
     case 'cadence':   target = Number($('#f_dist').value) || 170; break;
@@ -1230,7 +1264,7 @@ function saveChallenge() {
          la actividad tiene que cumplir. Solo se guardan los que llenó. */
       const p = {};
       const d = Number($('#f_dist').value), t = parseClock($('#f_time').value);
-      const e = Number($('#f_elev').value), pc = parsePace($('#f_pace').value);
+      const e = Number($('#f_elev').value), pc = Number($('#f_pace').value);
       if (d)  p.dist_m  = toM(d);
       if (t)  p.minutes = Math.round(t / 60);
       if (e)  p.elev_m  = toElevM(e);
@@ -1266,7 +1300,8 @@ function editChallenge(id) {
   closeModal(); EDITING = id; TRAINER_TAB = c.period; VIEW = 'trainer'; render();
   $('#f_name').value = c.name; $('#f_desc').value = c.desc;
   $('#f_goal').value = c.goal.type; $('#f_xp').value = c.xp;
-  if (c.goal.type === 'pace') $('#f_pace').value = U.pace(c.goal.target);
+  if (c.goal.type === 'pace') $('#f_pace').innerHTML = selectPace(c.goal.target);
+  if (c.params && c.params.paceMax) $('#f_pace').innerHTML = selectPace(c.params.paceMax);
   else if (c.goal.type === 'elevation') $('#f_elev').value = U.elev(c.goal.target);
   else if (['runs','streak','cadence','hr'].includes(c.goal.type)) $('#f_dist').value = c.goal.target;
   else $('#f_dist').value = U.dist(c.goal.target);
@@ -1493,4 +1528,10 @@ document.addEventListener('click', e => {
 });
 
 $('#ov').addEventListener('click', e => { if (e.target.id === 'ov') closeModal(); });
+
+/* Delegado en document a propósito: render() reconstruye el formulario
+   entero, así que un listener puesto sobre los campos moriría al primer
+   repintado. */
+document.addEventListener('input',  e => { if (e.target.id === 'f_dist' || e.target.id === 'f_pace') recalcTiempo(); });
+document.addEventListener('change', e => { if (e.target.id === 'f_pace') recalcTiempo(); });
 /* Boot se hace en el HTML, en el listener de Firebase. */
