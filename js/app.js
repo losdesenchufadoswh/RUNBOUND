@@ -627,7 +627,9 @@ function rewardTile(i, showLocked, clickable) {
 /* Rejilla de la semana: qué le toca a quién cada día. Se ve de un
    vistazo si el plan está cargado un día y vacío otro. */
 function planSemanal() {
-  const semanales = (ST.challenges || []).filter(c => c.period === 'weekly');
+  /* La semana se arma con sesiones DIARIAS puestas en un día. Los retos
+     weekly son metas del período completo y no van en la rejilla. */
+  const semanales = (ST.challenges || []).filter(c => c.period === 'daily');
   const hoy = diaHoy();
   const cols = DIAS.map((d, i) => {
     const sesiones = semanales.filter(c => c.dia === i);
@@ -645,10 +647,10 @@ function planSemanal() {
   const sinDia = semanales.filter(c => c.dia == null);
   return `
   <div class="sect"><h2>PLAN DE LA SEMANA</h2>
-    <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">${semanales.length} SESIONES</span></div>
+    <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">${semanales.filter(c => c.dia != null).length} ASIGNADAS</span></div>
   <div class="psemana">${cols}</div>
   ${sinDia.length
-    ? `<div class="hint" style="margin-top:8px">Sin día fijo: ${sinDia.map(c => esc(c.name)).join(' · ')}</div>`
+    ? `<div class="hint" style="margin-top:8px">Todos los días: ${sinDia.map(c => esc(c.name)).join(' · ')}</div>`
     : ''}`;
 }
 
@@ -720,15 +722,15 @@ function renderTrainer() {
       ? '<div class="hint" style="margin-top:6px">Añade atletas arriba para poder asignarles sesiones.</div>' : ''}
   </div>
 
-  ${TRAINER_TAB === 'weekly' ? `
+  ${TRAINER_TAB === 'daily' ? `
   <div class="fld txt" style="margin-bottom:9px"><div class="fl">📅 QUÉ DÍA TOCA</div>
     <div class="chips">
-      <button class="chip ${DIA_SEL === null ? 'on' : ''}" data-act="diasel" data-id="">Cualquiera</button>
+      <button class="chip ${DIA_SEL === null ? 'on' : ''}" data-act="diasel" data-id="">Todos los días</button>
       ${DIAS.map((d, i) =>
         `<button class="chip ${DIA_SEL === i ? 'on' : ''}" data-act="diasel" data-id="${i}">${d}</button>`).join('')}
     </div>
-    <div class="hint" style="margin-top:6px">El día es una guía del calendario: la sesión
-      se sigue pudiendo cumplir en toda la semana.</div>
+    <div class="hint" style="margin-top:6px">Así se arma la semana: una sesión por día.
+      Sin día, la sesión aparece todos los días.</div>
   </div>` : ''}
   <div class="fgrid">
     <div class="fld"><div class="fl">📏 DISTANCE</div><input id="f_dist" type="number" step="0.1" value="3.0"><div class="fu2">${U.distU()}</div></div>
@@ -1341,7 +1343,7 @@ function saveChallenge() {
     period:TRAINER_TAB, name, desc:$('#f_desc').value.trim() || (TYPE_GOAL_LABEL[type] ? `Meta de ${TYPE_GOAL_LABEL[type]}` : 'Sesión asignada por tu coach'),
     goal, params:PARAMS, xp, shards:Math.round(xp/5), by:'trainer',
     para: PARA.slice(),
-    dia: TRAINER_TAB === 'weekly' ? DIA_SEL : null,
+    dia: TRAINER_TAB === 'daily' ? DIA_SEL : null,
     expires:new Date(Date.now() + exp*864e5).toISOString()
   };
   if (EDITING) {

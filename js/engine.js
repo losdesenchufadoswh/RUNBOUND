@@ -153,8 +153,14 @@ function esParaMi(c, quien = ST.quienSoy) {
   if (!c.para || !c.para.length) return true;
   return c.para.includes(quien);
 }
+/* Una sesión puesta en un día solo aplica ESE día. Si no, el lunes
+   verías el Tempo del miércoles como pendiente y la adherencia del lunes
+   se hundiría por una sesión que hoy no toca. */
+function tocaHoy(c) {
+  return c.dia == null || c.dia === diaHoy();
+}
 function misRetos(quien = ST.quienSoy) {
-  return (ST.challenges || []).filter(c => esParaMi(c, quien));
+  return (ST.challenges || []).filter(c => esParaMi(c, quien) && tocaHoy(c));
 }
 /* Nombres de a quién va dirigido, para pintarlo en Modo Coach. */
 function textoPara(c) {
@@ -163,26 +169,24 @@ function textoPara(c) {
 }
 
 /* ── DÍAS DE LA SEMANA ────────────────────────────────────
-   `c.dia` (0=lunes … 6=domingo) es cuándo TOCA la sesión dentro del
-   plan semanal. Es una guía de calendario, no una cárcel: el reto se
-   sigue evaluando en toda la semana, así que hacer el martes lo que
-   tocaba el lunes cuenta igual. Castigar eso empujaría a saltarse la
-   sesión en vez de recuperarla. */
+   `c.dia` (0=lunes … 6=domingo) solo existe en retos DIARIOS: la semana
+   se arma poniendo una sesión diaria en cada día. Los retos weekly y
+   monthly son metas del período completo — pedirles un día no tendría
+   sentido, porque su ventana ya es la semana o el mes entero. */
 const DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const DIAS_LARGO = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
 /* Lunes = 0, para que cuadre con D.startOfWeek(). */
 const diaHoy = () => (new Date().getDay() + 6) % 7;
 
-/* Lo que toca hoy según el plan: primero la sesión del día, y si no hay,
-   cualquier cosa pendiente del día. */
+/* Lo que toca hoy. `misRetos()` ya descartó lo de otros días, así que
+   aquí solo hay que escoger entre lo que sí aplica hoy: primero la
+   sesión asignada a este día, y si no, un diario suelto. */
 function sesionDeHoy() {
-  const d = diaHoy();
   const mias = misRetos();
-  const delDia = mias.filter(c => c.dia === d);
-  const pendiente = delDia.find(c => !evalChallenge(c).done);
-  if (pendiente) return pendiente;
-  if (delDia.length) return delDia[0];
-  return mias.find(c => c.period === 'daily' && !evalChallenge(c).done)
+  const delDia = mias.filter(c => c.dia != null);
+  return delDia.find(c => !evalChallenge(c).done)
+      || delDia[0]
+      || mias.find(c => c.period === 'daily' && !evalChallenge(c).done)
       || mias.find(c => c.period === 'daily');
 }
 
