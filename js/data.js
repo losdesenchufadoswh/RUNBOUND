@@ -89,7 +89,12 @@ function newRun(o = {}) {
     tz: o.tz || Intl.DateTimeFormat().resolvedOptions().timeZone,
     source: o.source || 'manual',
     external_id: o.external_id || null,
-    manual: !!o.manual
+    manual: !!o.manual,
+    /* Datos que piden los retos nuevos. Todos opcionales: una actividad
+       vieja sin ellos sigue valiendo, solo no cuenta para esos retos. */
+    tipo: o.tipo || 'run',        // run | walk | strength | bike | swim | other
+    carrera: !!o.carrera,         // fue una carrera oficial
+    negSplit: !!o.negSplit        // segunda mitad más rápida que la primera
   };
 }
 
@@ -175,7 +180,7 @@ const UPCOMING = {
    el resto de la app siga leyendo `ST.runs` como siempre; al cambiar de
    usuario se guardan de vuelta y se hidratan los del otro. Así el cambio
    de perfil no obligó a tocar ni una de las pantallas. */
-const CAMPOS_ATLETA = ['profile', 'runs', 'collection', 'gacha', 'signin', 'claimed', 'log'];
+const CAMPOS_ATLETA = ['profile', 'runs', 'collection', 'gacha', 'signin', 'claimed', 'log', 'historial'];
 const ID_COACH = 'coach';
 
 /* hrMax/hrRest son TUYAS: el esfuerzo se calcula con reserva cardiaca
@@ -192,7 +197,10 @@ function perfilNuevo(nombre, esCoach = false) {
     gacha: { pulls:0, sinceEpic:0, sinceMythic:0 },
     signin: { dia:0, ultimo:null },
     claimed: {},
-    log: []
+    log: [],
+    /* Cómo fue cada semana. Lo necesitan los retos mensuales que
+       preguntan por semanas completas. */
+    historial: { semanas: {} }
   };
 }
 
@@ -232,9 +240,102 @@ function load() {
    bloquear, para que la app no dependa de tener internet. */
 function save() {
   try {
+    if (typeof anotarSemana === 'function') anotarSemana();
     if (typeof guardarActivo === 'function') guardarActivo();
+    /* Marca del último cambio: es lo que decide, al abrir en otro sitio,
+       si manda el disco o la nube. */
+    ST.tocado = Date.now();
     localStorage.setItem(KEY, JSON.stringify(ST));
   } catch (e) {}
   try { if (typeof sincronizar === 'function') sincronizar(); } catch (e) {}
 }
 function reset() { localStorage.removeItem(KEY); ST = fresh(); }
+
+/* ── PRESETS DE RETOS ─────────────────────────────────────────
+   Catálogo listo para que el coach los añada de un toque. Cada uno dice
+   qué DATO necesita para poder cumplirse, porque varios dependen de
+   campos que el atleta marca al registrar la actividad (tipo, carrera,
+   negative split). Si ese dato no se llena, el reto no avanza — y eso
+   es correcto: mejor que no avance a que cuente algo que no pasó. */
+const PRESETS = [
+  /* ── SEMANALES ─────────────────────────────────────────── */
+  { id:'p_full',    period:'weekly', name:'Full Schedule',
+    desc:'Completa 5 actividades durante la semana',
+    goal:{ type:'runs', target:5 }, xp:1200, shards:150,
+    necesita:'Nada extra: cuenta cualquier actividad registrada.' },
+
+  { id:'p_iron',    period:'weekly', name:'Iron Legs',
+    desc:'2 sesiones de fuerza o calistenia de 20+ min',
+    goal:{ type:'tipo_min', target:2, tipo:'strength', minutos:20 }, xp:1400, shards:180,
+    necesita:'Al registrar, marca el tipo Strength.' },
+
+  { id:'p_triple',  period:'weekly', name:'Triple Threat',
+    desc:'3 tipos diferentes de actividad en la semana',
+    goal:{ type:'tipos', target:3 }, xp:1300, shards:160,
+    necesita:'Marca el tipo en cada actividad (Run, Bike, Strength…).' },
+
+  { id:'p_orders',  period:'weekly', name:"Coach's Orders",
+    desc:'Completa el 100% de los workouts que te asignó el coach',
+    goal:{ type:'plan', target:100 }, xp:2000, shards:250,
+    necesita:'Nada extra: sale de las sesiones que te asignaron.' },
+
+  /* ── MENSUALES ─────────────────────────────────────────── */
+  { id:'p_easy',    period:'monthly', name:'Easy Means Easy',
+    desc:'Completa 1 Easy Run quedándote en la zona de pulso pedida',
+    goal:{ type:'session', target:1 },
+    params:{ dist_m: 2 * M_PER_MI, hrMin:105, hrMax:145, hrObligatoria:true },
+    xp:1500, shards:180,
+    necesita:'Hay que registrar el pulso medio: sin pulso no se puede verificar.' },
+
+  { id:'p_interval',period:'monthly', name:'Interval Survivor',
+    desc:'Completa una sesión de intervalos entera',
+    goal:{ type:'session', target:1 },
+    params:{ minutes:25, dist_m: 2.5 * M_PER_MI },
+    xp:1600, shards:200,
+    necesita:'El coach define la sesión; se cumple al registrarla completa.' },
+
+  { id:'p_neg',     period:'monthly', name:'Negative Split',
+    desc:'Termina la segunda mitad más rápida que la primera',
+    goal:{ type:'neg_split', target:1 }, xp:1800, shards:220,
+    necesita:'Marca la casilla “negative split” al registrar la actividad.' },
+
+  { id:'p_set',     period:'monthly', name:'Complete the Set',
+    desc:'Easy + Quality + Strength en la misma semana',
+    goal:{ type:'set_completo', target:3 }, xp:1700, shards:200,
+    necesita:'Marca el tipo de cada actividad; “Quality” sale del plan del coach.' },
+
+  { id:'p_race',    period:'monthly', name:'Race Day',
+    desc:'Participa en 1 carrera o evento oficial en el mes',
+    goal:{ type:'carrera', target:1 }, xp:2500, shards:350,
+    necesita:'Marca la casilla “fue una carrera” al registrarla.' },
+
+  { id:'p_20club',  period:'monthly', name:'20 Club',
+    desc:'Completa 20 actividades en el mes',
+    goal:{ type:'runs', target:20 }, xp:2200, shards:280,
+    necesita:'Nada extra.' },
+
+  { id:'p_ironm',   period:'monthly', name:'Iron Month',
+    desc:'8 sesiones de fuerza o calistenia de 20+ min',
+    goal:{ type:'tipo_min', target:8, tipo:'strength', minutos:20 }, xp:2400, shards:300,
+    necesita:'Marca el tipo Strength en esas sesiones.' },
+
+  { id:'p_4weeks',  period:'monthly', name:'Four Perfect Weeks',
+    desc:'Cierra 4 semanas cumpliendo todo el plan',
+    goal:{ type:'semanas_perfectas', target:4 }, xp:3000, shards:400,
+    necesita:'Se anota solo al cerrar cada semana con el plan al 100%.' },
+
+  { id:'p_consist', period:'monthly', name:'Consistency King',
+    desc:'Registra actividad en 16 días distintos del mes',
+    goal:{ type:'dias_activos', target:16 }, xp:2600, shards:320,
+    necesita:'Nada extra: cuenta días distintos con actividad.' },
+
+  { id:'p_pweeks',  period:'monthly', name:'Perfect Weeks ×2',
+    desc:'2 semanas sin saltarte un workout asignado',
+    goal:{ type:'semanas_perfectas', target:2 }, xp:2000, shards:250,
+    necesita:'Se anota solo al cerrar cada semana con el plan al 100%.' },
+
+  { id:'p_gaunt',   period:'monthly', name:'The Gauntlet',
+    desc:'Completa 4 weekly challenges distintos en el mes',
+    goal:{ type:'retos_semanales', target:4 }, xp:2800, shards:360,
+    necesita:'Se anota solo según los retos semanales que vayas cerrando.' }
+];

@@ -178,6 +178,43 @@ const DIAS_LARGO = ['lunes','martes','miércoles','jueves','viernes','sábado','
 /* Lunes = 0, para que cuadre con D.startOfWeek(). */
 const diaHoy = () => (new Date().getDay() + 6) % 7;
 
+/* ¿Se cumplió esa sesión EL DÍA QUE LE TOCABA, esta semana?
+
+   `evalChallenge` de un diario mira solo las actividades de HOY, así que
+   no sirve para pintar la rejilla: el lunes daría "sin hacer" la sesión
+   del miércoles. Aquí se busca la fecha real de ese día en la semana en
+   curso y se revisa lo que se hizo ESE día. */
+function cumplidoPor(c, quien) {
+  if (c.dia == null) return false;
+  const inicio = D.startOfWeek();
+  const fecha = new Date(inicio);
+  fecha.setDate(fecha.getDate() + c.dia);
+  if (fecha > new Date()) return false;                 // aún no ha llegado
+  const clave = D.key(fecha);
+  /* Las actividades de ESA persona, no las de quien está mirando: el
+     coach ve la rejilla y sus propios runs no dicen nada de si su
+     atleta cumplió. */
+  const suyas = quien === ST.quienSoy
+    ? ST.runs
+    : (((ST.atletas || {})[quien] || {}).runs || []);
+  const delDia = suyas.filter(r => !r.manual && D.key(r.start_iso) === clave);
+  if (!delDia.length) return false;
+  if (c.params) return delDia.some(r => cumpleParams(r, c.params));
+  /* Sin parámetros basta con que ese día se hiciera algo. */
+  return true;
+}
+const cumplidoEnSuDia = c => cumplidoPor(c, ST.quienSoy);
+
+/* Cuántos de los asignados ya la cumplieron ese día. */
+function avanceSesion(c) {
+  const destinatarios = (c.para && c.para.length)
+    ? c.para
+    : personas().map(p => p.id);
+  const hechos = destinatarios.filter(id => cumplidoPor(c, id)).length;
+  return { hechos, total: destinatarios.length,
+           completo: destinatarios.length > 0 && hechos === destinatarios.length };
+}
+
 /* Lo que toca hoy. `misRetos()` ya descartó lo de otros días, así que
    aquí solo hay que escoger entre lo que sí aplica hoy: primero la
    sesión asignada a este día, y si no, un diario suelto. */
@@ -189,6 +226,62 @@ function sesionDeHoy() {
       || mias.find(c => c.period === 'daily' && !evalChallenge(c).done)
       || mias.find(c => c.period === 'daily');
 }
+
+/* ── HISTORIAL SEMANAL ────────────────────────────────────
+   Hay retos mensuales que preguntan por SEMANAS ("4 semanas perfectas",
+   "4 weekly challenges distintos"). Eso no se puede derivar mirando solo
+   las actividades: hay que dejar constancia de cómo fue cada semana.
+
+   Se anota la semana EN CURSO en cada guardado. Cuando cambia la semana,
+   la clave cambia y la anterior queda congelada tal como terminó — sin
+   tener que recalcular el pasado, que sería imposible porque el plan del
+   coach pudo cambiar desde entonces. */
+function claveSemana(d = new Date()) {
+  const i = D.startOfWeek(d);
+  return D.key(i);
+}
+function anotarSemana() {
+  if (!ST || !ST.quienSoy) return;
+  if (!ST.historial) ST.historial = { semanas: {} };
+  if (!ST.historial.semanas) ST.historial.semanas = {};
+  const ses = misRetos().filter(c => c.period === 'weekly' && esSesion(c));
+  const hechas = ses.filter(c => evalChallenge(c).done).length;
+  ST.historial.semanas[claveSemana()] = {
+    inicio: claveSemana(),
+    plan: ses.length ? hechas / ses.length : 0,
+    retos: misRetos().filter(c => c.period === 'weekly' && !esSesion(c) && evalChallenge(c).done)
+                     .map(c => c.id)
+  };
+}
+const semanasGuardadas = () => Object.values((ST.historial && ST.historial.semanas) || {});
+/* Semanas en que se cumplió el 100% del plan asignado. */
+const semanasPerfectas = () => semanasGuardadas().filter(s => s.plan >= 1).length;
+/* Retos semanales DISTINTOS completados dentro del mes en curso. */
+function retosSemanalesDelMes() {
+  const desde = D.startOfMonth();
+  const ids = new Set();
+  for (const s of semanasGuardadas()) {
+    if (D.parse(s.inicio) < desde) continue;
+    (s.retos || []).forEach(id => ids.add(id));
+  }
+  return ids.size;
+}
+
+/* ── TIPOS DE ACTIVIDAD ───────────────────────────────────
+   Sin esto no se pueden medir los retos de fuerza ni los de variedad:
+   una caminata y una sesión de calistenia eran el mismo registro. */
+const TIPOS = {
+  run:      { label:'Run',      em:'🏃' },
+  walk:     { label:'Walk',     em:'🚶' },
+  strength: { label:'Strength', em:'💪' },
+  bike:     { label:'Bike',     em:'🚴' },
+  swim:     { label:'Swim',     em:'🏊' },
+  other:    { label:'Other',    em:'✨' }
+};
+const tipoDe = r => r.tipo || 'run';
+/* Fuerza y cross-training cuentan igual para "Complete the Set". */
+const esFuerza = r => ['strength'].includes(tipoDe(r));
+const esCross  = r => ['bike','swim','other'].includes(tipoDe(r));
 
 /* ── evaluación de retos ──────────────────────────────────── */
 /* Devuelve { cur, target, pct, done, label } — `cur` en unidad cruda. */
@@ -217,6 +310,40 @@ function evalChallenge(c) {
     case 'session':
       /* cuántas actividades del período cumplieron TODOS los parámetros */
       cur = rs.filter(r => cumpleParams(r, c.params)).length; break;
+
+    /* ── metas que necesitan los datos nuevos ──────────────── */
+    case 'dias_activos':
+      cur = new Set(rs.map(r => D.key(r.start_iso))).size; break;
+    case 'tipos':
+      cur = new Set(rs.map(tipoDe)).size; break;
+    case 'tipo_min':
+      /* p.ej. 2 sesiones de fuerza de 20+ min */
+      cur = rs.filter(r => tipoDe(r) === g.tipo && r.moving_s >= (g.minutos || 20) * 60).length; break;
+    case 'carrera':
+      cur = rs.filter(r => r.carrera).length; break;
+    case 'neg_split':
+      cur = rs.filter(r => r.negSplit).length; break;
+    case 'plan': {
+      /* % de las sesiones que te asignó el coach, ya cumplidas.
+         Se excluye este mismo reto para no entrar en bucle. */
+      const ses = misRetos().filter(x => x.period === c.period && esSesion(x) && x.id !== c.id);
+      cur = ses.length ? Math.round(ses.filter(x => evalChallenge(x).done).length / ses.length * 100) : 0;
+      break;
+    }
+    case 'set_completo': {
+      /* Easy + Quality + Strength/Cross en la misma semana. Se cuenta
+         cuántas de las tres categorías aparecen. */
+      const facil   = rs.some(r => ['run','walk'].includes(tipoDe(r)));
+      const calidad = misRetos().filter(x => x.period === 'weekly' && esSesion(x))
+                                .some(x => evalChallenge(x).done);
+      const fuerte  = rs.some(r => esFuerza(r) || esCross(r));
+      cur = [facil, calidad, fuerte].filter(Boolean).length;
+      break;
+    }
+    case 'semanas_perfectas':
+      cur = semanasPerfectas(); break;
+    case 'retos_semanales':
+      cur = retosSemanalesDelMes(); break;
     case 'pace': {
       lower = true;
       const paces = rs.filter(r => r.distance_m > 400).map(r => U.paceSec(r));
@@ -245,6 +372,15 @@ function progressLabel(c, ev) {
     case 'session':return `${cap(ev.cur)} / ${g.target} SESSIONS`;
     case 'runs':   return `${cap(ev.cur)} / ${g.target} ACTIVITIES`;
     case 'streak': return `${cap(ev.cur)} / ${g.target} ACTIVITIES`;
+    case 'dias_activos': return `${cap(ev.cur)} / ${g.target} DAYS`;
+    case 'tipos':        return `${cap(ev.cur)} / ${g.target} TYPES`;
+    case 'tipo_min':     return `${cap(ev.cur)} / ${g.target} SESSIONS`;
+    case 'carrera':      return `${cap(ev.cur)} / ${g.target} RACES`;
+    case 'neg_split':    return `${cap(ev.cur)} / ${g.target} NEG SPLITS`;
+    case 'plan':         return `${cap(ev.cur)}% / ${g.target}% DEL PLAN`;
+    case 'set_completo': return `${cap(ev.cur)} / ${g.target} CATEGORIES`;
+    case 'semanas_perfectas': return `${cap(ev.cur)} / ${g.target} WEEKS`;
+    case 'retos_semanales':   return `${cap(ev.cur)} / ${g.target} CHALLENGES`;
     case 'cadence':return `${Math.round(cap(ev.cur)) || 0} / ${g.target} SPM`;
     case 'hr':     return `${cap(ev.cur)} / ${g.target} RUNS`;
     case 'time':   return `${U.clock(cap(ev.cur))} / ${U.clock(g.target)}`;

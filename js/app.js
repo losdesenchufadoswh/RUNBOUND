@@ -13,6 +13,8 @@ let SHOP_TAB = 'cofres';
 let INV_TAB = 'title';
 let TRAINER_TAB = 'daily';
 let EDITING = null;
+let TIPO_RUN = 'run';   // tipo de la actividad que se está registrando
+let EXTRA_CARRERA = false, EXTRA_NEG = false;
 let PARA = [];          // a qué atletas va la sesión que se está creando
 let DIA_SEL = null;     // qué día de la semana le toca (null = cualquiera)
 
@@ -624,6 +626,37 @@ function rewardTile(i, showLocked, clickable) {
 }
 
 /* ═══ TRAINER (plan del coach) ════════════════════════════ */
+/* Tocar una sesión de la rejilla abre esto, en vez de meterte en modo
+   edición sin avisar — que es lo que hacía antes y provocaba mover sin
+   querer la sesión de un día a otro.
+
+   Desde aquí el coach mueve, edita o borra: autoridad total sobre el
+   plan sin tener que pasar por el formulario. */
+function sheetSesion(id) {
+  const c = ST.challenges.find(x => x.id === id); if (!c) return;
+  const av = avanceSesion(c);
+  openSheet(`
+    <div class="mh">
+      <div class="mt">${esc(c.name)}</div>
+      <div class="msub">${esc(textoPara(c))}${c.dia != null ? ' · ' + DIAS_LARGO[c.dia] : ''}</div>
+    </div>
+    ${c.dia != null ? `<div class="hechochip ${av.completo ? '' : 'parcial'}">${
+              av.completo ? '✓ Todos la cumplieron este día'
+                          : av.hechos + ' de ' + av.total + ' la han cumplido'}</div>` : ''}
+    <div class="fld txt" style="margin:10px 0"><div class="fl">MOVER A OTRO DÍA</div>
+      <div class="chips">
+        ${DIAS.map((d, i) => `<button class="chip ${c.dia === i ? 'on' : ''}"
+           data-act="mover-sesion" data-id="${c.id}" data-dia="${i}">${d}</button>`).join('')}
+        <button class="chip ${c.dia == null ? 'on' : ''}" data-act="mover-sesion" data-id="${c.id}" data-dia="">Todos</button>
+      </div>
+    </div>
+    <div class="mrow2">
+      <button class="btnbig" data-act="edit-ch" data-id="${c.id}">EDITAR</button>
+      <button class="btnw" style="margin:0" data-act="del-ch" data-id="${c.id}">🗑️ Borrar</button>
+    </div>
+    <button class="btnw" style="margin:8px 0 0" data-act="close">Cerrar</button>`);
+}
+
 /* Rejilla de la semana: qué le toca a quién cada día. Se ve de un
    vistazo si el plan está cargado un día y vacío otro. */
 function planSemanal() {
@@ -636,10 +669,16 @@ function planSemanal() {
     return `<div class="pdia ${i === hoy ? 'hoy' : ''} ${sesiones.length ? 'lleno' : ''}">
       <div class="pdl">${d}</div>
       ${sesiones.length
-        ? sesiones.map(c => `<button class="pses" data-act="edit-ch" data-id="${c.id}">
-            <div class="psn">${esc(c.name)}</div>
-            <div class="psq">${esc(textoPara(c))}</div>
-          </button>`).join('')
+        ? sesiones.map(c => {
+            /* Gris cuando TODOS los asignados ya la hicieron ese día.
+               Si va a medias se ve el conteo, que es más útil que un
+               sí/no para un coach que lleva varios atletas. */
+            const av = avanceSesion(c);
+            return `<button class="pses ${av.completo ? 'hecho' : ''}" data-act="tocar-sesion" data-id="${c.id}">
+              <div class="psn">${av.completo ? '✓ ' : ''}${esc(c.name)}</div>
+              <div class="psq">${av.hechos}/${av.total} · ${esc(textoPara(c))}</div>
+            </button>`;
+          }).join('')
         : '<div class="pvacio">—</div>'}
     </div>`;
   }).join('');
@@ -709,7 +748,28 @@ function renderTrainer() {
 
   ${planSemanal()}
 
-  <div class="sect"><h2>CREATE SESSION</h2></div>
+  <div class="sect"><h2>RETOS LISTOS</h2>
+    <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">TOCA PARA AÑADIR</span></div>
+  <div class="presets">
+    ${PRESETS.map(p => {
+      const puesto = ST.challenges.some(c => c.id === p.id);
+      return `<button class="preset ${puesto ? 'puesto' : ''}" data-act="preset" data-id="${p.id}">
+        <div class="prt">${esc(p.name)}${puesto ? ' <i class="okp">✓</i>' : ''}</div>
+        <div class="prd">${esc(p.desc)}</div>
+        <div class="prm"><span class="prp">${PERIOD_LABEL[p.period]}</span>
+          <span class="prn">${esc(p.necesita)}</span></div>
+      </button>`;
+    }).join('')}
+  </div>
+
+  ${EDITING ? `<div class="editando">
+    <div class="eb"><div class="et">EDITANDO</div>
+      <div class="en">${esc((ST.challenges.find(x => x.id === EDITING) || {}).name || '')}</div>
+      <div class="es">Al guardar se MODIFICA esta sesión, no se crea otra.</div></div>
+    <button class="btnw" style="margin:0;flex:0 0 auto;padding:0 14px" data-act="clear-ch">Cancelar</button>
+  </div>` : ''}
+
+  <div class="sect"><h2>${EDITING ? 'EDITAR SESIÓN' : 'CREATE SESSION'}</h2></div>
   ${segmented(TRAINER_TAB, tabs, 'ttab')}
 
   <div class="fld txt" style="margin-bottom:9px"><div class="fl">👥 PARA QUIÉN</div>
@@ -738,9 +798,9 @@ function renderTrainer() {
       <select id="f_pace" class="pacesel">${selectPace()}</select>
       <div class="fu2">/${U.distU()}</div></div>
     <div class="fld calc"><div class="fl">⌛ TIME</div><input id="f_time" type="text" value="36:00"><div class="fu2" id="f_timecalc">3 ${U.distU().toLowerCase()} × 12'00"</div></div>
-    <div class="fld"><div class="fl">⛰️ ELEVATION</div><input id="f_elev" type="number" value="300"><div class="fu2">${U.elevU()}</div></div>
+    <div class="fld"><div class="fl">⛰️ ELEVATION</div><input id="f_elev" type="number" placeholder="opcional"><div class="fu2">${U.elevU()}</div></div>
     <div class="fld"><div class="fl">❤️ HR ZONE</div>
-      <select id="f_hr"><option value="">Ninguna</option><option>Z2</option><option selected>Z3</option><option>Z4</option><option>Z5</option></select>
+      <select id="f_hr"><option value="" selected>Ninguna</option><option>Z2</option><option>Z3</option><option>Z4</option><option>Z5</option></select>
       <div class="fu2">relativa a ti</div></div>
     <div class="fld"><div class="fl">✦ REWARD</div><input id="f_xp" type="number" step="50" value="250"><div class="fu2">XP</div></div>
   </div>
@@ -762,7 +822,8 @@ function renderTrainer() {
       <option value="session">Sesión con parámetros (usa los campos de arriba)</option>
     </select></div>
   <div class="hint" style="margin:0 0 10px">Con <b>“Sesión con parámetros”</b> la actividad tiene que cumplir
-  TODO lo que llenes arriba. Es lo que puntúa en Adherencia al Plan.</div>
+  TODO lo que llenes arriba — y <b>solo</b> eso. Los campos que dejes vacíos no se exigen,
+  así que no pidas elevación o pulso si no los vas a medir. Es lo que puntúa en Adherencia al Plan.</div>
   <div class="acts">
     <button class="act ok" data-act="save-ch">${EDITING ? '💾 GUARDAR' : '✦ CREAR'}</button>
     <button class="act ed" data-act="pick-ch">✏️ EDITAR</button>
@@ -906,6 +967,23 @@ function modalLogRun() {
   openModal(`
     <h3>Registrar actividad</h3>
     <div class="msub">CAMINAR CUENTA IGUAL QUE CORRER</div>
+
+    <div class="fld txt" style="margin-bottom:9px"><div class="fl">TIPO DE ACTIVIDAD</div>
+      <div class="chips">
+        ${Object.entries(TIPOS).map(([k, v]) =>
+          `<button class="chip ${k === TIPO_RUN ? 'on' : ''}" data-act="tipo-run" data-id="${k}">${v.em} ${v.label}</button>`).join('')}
+      </div>
+    </div>
+
+    <div class="fld txt" style="margin-bottom:9px"><div class="fl">EXTRAS</div>
+      <div class="chips">
+        <button class="chip ${EXTRA_CARRERA ? 'on' : ''}" data-act="extra-carrera">🏁 Fue una carrera</button>
+        <button class="chip ${EXTRA_NEG ? 'on' : ''}" data-act="extra-neg">📉 Negative split</button>
+      </div>
+      <div class="hint" style="margin-top:6px">Marca lo que aplique — hay retos que solo
+        avanzan con estos datos.</div>
+    </div>
+
     <div class="fgrid">
       <div class="fld"><div class="fl">DISTANCE</div><input id="l_dist" type="number" step="0.01" value="3.0"><div class="fu2">${U.distU()}</div></div>
       <div class="fld"><div class="fl">TIME</div><input id="l_time" type="text" value="36:00"><div class="fu2">MM:SS</div></div>
@@ -1295,8 +1373,11 @@ function saveRun() {
     avg_hr:Number($('#l_hr').value) || null,
     cadence_spm:Number($('#l_cad').value) || null,
     start_iso:new Date($('#l_when').value || Date.now()).toISOString(),
-    source:'manual'
+    source:'manual',
+    tipo:TIPO_RUN, carrera:EXTRA_CARRERA, negSplit:EXTRA_NEG
   });
+  /* Los extras se limpian: son de esa actividad, no del formulario. */
+  TIPO_RUN = 'run'; EXTRA_CARRERA = false; EXTRA_NEG = false;
   closeModal(); render();
   toast('✅ Actividad registrada — puntos actualizados');
 }
@@ -1592,7 +1673,41 @@ document.addEventListener('click', e => {
     case 'del-pick':   modalPickChallenge('del'); break;
     case 'edit-ch':    editChallenge(id); break;
     case 'del-ch':     delChallenge(id); break;
-    case 'clear-ch':   EDITING = null; render(); toast('Formulario limpio'); break;
+    case 'clear-ch':   EDITING = null; PARA = []; DIA_SEL = null; render(); toast('Formulario limpio'); break;
+    case 'tocar-sesion': sheetSesion(id); break;
+    case 'preset': {
+      const p = PRESETS.find(x => x.id === id); if (!p) break;
+      if (ST.challenges.some(c => c.id === p.id)) {
+        ST.challenges = ST.challenges.filter(c => c.id !== p.id);
+        delete ST.claimed[p.id];
+        save(); render(); toast('Quitado: ' + p.name);
+        break;
+      }
+      const fin = { weekly:'eow', monthly:'eom' }[p.period];
+      const d = new Date();
+      const expira = fin === 'eow'
+        ? (() => { const x = D.startOfWeek(); x.setDate(x.getDate() + 7); return x.toISOString(); })()
+        : new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString();
+      ST.challenges.push({
+        id:p.id, period:p.period, name:p.name, desc:p.desc,
+        goal:{ ...p.goal }, params:p.params || null,
+        xp:p.xp, shards:p.shards, by:'trainer',
+        para:PARA.slice(), dia:null, expires:expira
+      });
+      save(); render(); toast('✦ Añadido: ' + p.name);
+      break;
+    }
+    case 'tipo-run':     TIPO_RUN = id; modalLogRun(); break;
+    case 'extra-carrera':EXTRA_CARRERA = !EXTRA_CARRERA; modalLogRun(); break;
+    case 'extra-neg':    EXTRA_NEG = !EXTRA_NEG; modalLogRun(); break;
+    case 'mover-sesion': {
+      const c = ST.challenges.find(x => x.id === id); if (!c) break;
+      const d = t.dataset.dia;
+      c.dia = d === '' ? null : Number(d);
+      save(); closeModal(); render();
+      toast(c.dia == null ? `${esc(c.name)} → todos los días` : `${esc(c.name)} → ${DIAS_LARGO[c.dia]}`);
+      break;
+    }
     case 'close':      closeModal(); break;
   }
 });

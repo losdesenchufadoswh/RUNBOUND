@@ -61,13 +61,24 @@ async function guardarEnNube() {
   if (!FB_LISTO || !CURRENT_USER || !ST) return;
   try {
     if (typeof guardarActivo === 'function') guardarActivo();
-    /* Las fotos son data URLs pesados: van a Storage, no a la base. */
+    /* La foto va como data URL dentro del propio documento.
+
+       Antes se subía a Storage y se guardaba la URL, pero si las reglas
+       de Storage no lo permiten el SDK NO falla: reintenta con espera, y
+       como aquí se hacía `await`, se colgaba el guardado ENTERO — ni
+       roster ni retos ni nada llegaban a la nube.
+
+       Se puede meter directa porque ya viene recortada a 256px (~3-25KB)
+       y RTDB admite hasta 10MB por escritura. Menos piezas, y una
+       dependencia menos que configurar. */
     const atletas = JSON.parse(JSON.stringify(ST.atletas || {}));
     for (const id of Object.keys(atletas)) {
       const p = atletas[id].profile;
-      if (p && typeof p.photo === 'string' && p.photo.startsWith('data:')) {
-        const url = await subirFoto(id, p.photo);
-        if (url) { p.photoURL = url; delete p.photo; }
+      /* Guarda de tamaño: si alguna vez entra una foto sin recortar, se
+         deja en el dispositivo en vez de reventar la escritura. */
+      if (p && typeof p.photo === 'string' && p.photo.length > 700000) {
+        console.warn('[FB] Foto demasiado grande, no se sube');
+        delete p.photo;
       }
     }
     await db().ref(`users/${CURRENT_USER.uid}`).set({
@@ -76,6 +87,9 @@ async function guardarEnNube() {
       atletas,
       challenges: ST.challenges || [],
       goals: ST.goals, settings: ST.settings, season: ST.season,
+      /* Se sube la marca del ÚLTIMO CAMBIO LOCAL, no la hora de subida:
+         es lo que permite comparar al bajar quién va más adelantado. */
+      tocado: ST.tocado || 0,
       lastSync: new Date().toISOString()
     });
   } catch (e) {
@@ -92,6 +106,18 @@ async function cargarDeNube() {
     const snap = await db().ref(`users/${CURRENT_USER.uid}`).once('value');
     if (!snap.exists()) { console.log('[FB] Nada en la nube todavía'); return false; }
     const d = snap.val();
+
+    /* La nube NO gana siempre. Antes sí, y por eso se perdían cosas:
+       equipabas un marco, cerrabas la app antes de que saliera la subida
+       (va con 700ms de espera) y al volver a abrir el estado viejo de la
+       nube pisaba el nuevo del disco. Ahora gana el más reciente. */
+    const localTocado = ST.tocado || 0;
+    const nubeTocado  = d.tocado || 0;
+    if (localTocado > nubeTocado) {
+      console.log('[FB] El dispositivo va más adelantado — se conserva y se sube');
+      sincronizar();
+      return false;
+    }
     if (d.roster)     ST.roster     = d.roster;
     /* Firebase devuelve sin los arrays/objetos vacíos, así que cada
        atleta se rellena contra un perfil base antes de usarse. */
@@ -114,6 +140,7 @@ async function cargarDeNube() {
         if (ST.atletas[d.quienSoy][k] !== undefined) ST[k] = ST.atletas[d.quienSoy][k];
       }
       /* La foto vuelve como URL de Storage. */
+      /* Compatibilidad: guardados viejos traían la foto como URL de Storage. */
       if (ST.profile && ST.profile.photoURL && !ST.profile.photo) ST.profile.photo = ST.profile.photoURL;
     }
     console.log('[FB] Estado recuperado de la nube');
@@ -121,19 +148,6 @@ async function cargarDeNube() {
   } catch (e) {
     console.error('[FB] No se pudo cargar:', e.code || e.message);
     return false;
-  }
-}
-
-async function subirFoto(id, dataUrl) {
-  if (!FB_LISTO || !CURRENT_USER) return null;
-  try {
-    const blob = await fetch(dataUrl).then(r => r.blob());
-    const ref = storage().ref(`profiles/${CURRENT_USER.uid}/${id}.jpg`);
-    await ref.put(blob);
-    return await ref.getDownloadURL();
-  } catch (e) {
-    console.error('[FB] Foto:', e.code || e.message);
-    return null;
   }
 }
 
@@ -145,3 +159,18 @@ function sincronizar() {
   clearTimeout(colaNube);
   colaNube = setTimeout(guardarEnNube, 700);
 }
+
+/* Al salir de la app se vuelca lo pendiente de inmediato. Sin esto, en el
+   teléfono cerrar la pestaña mata el temporizador de 700ms y el último
+   cambio no llega nunca a la nube.
+   `keepalive` no aplica al SDK, así que se dispara el guardado directo:
+   en 'hidden' el navegador todavía da tiempo a que salga. */
+function volcarPendiente() {
+  if (!FB_LISTO) return;
+  clearTimeout(colaNube);
+  guardarEnNube();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') volcarPendiente();
+});
+window.addEventListener('pagehide', volcarPendiente);

@@ -673,3 +673,35 @@ img{max-width:100%}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pvacio{color:var(--dim);font-size:12px;margin-top:6px}
 .cpara{font-size:10.5px;color:var(--blue2);margin-top:3px}
+
+/* ══ EDICIÓN DE SESIONES ══════════════════════════════════════ */
+/* Aviso grande a propósito: antes solo cambiaba el texto de un botón y
+   se movían sesiones sin querer creyendo que se creaba una nueva. */
+.editando{display:flex;align-items:center;gap:10px;padding:11px 12px;margin-bottom:10px;
+  border-radius:12px;background:linear-gradient(180deg,#3a2a12,#241a0c);border:1px solid var(--gold)}
+.editando .eb{flex:1;min-width:0}
+.editando .et{font-family:var(--fu);font-weight:700;font-size:9.5px;letter-spacing:1.6px;color:var(--gold2)}
+.editando .en{font-family:var(--fb);font-weight:800;font-size:15px;line-height:1.2;margin-top:1px}
+.editando .es{font-size:11px;color:#d8c9a4;margin-top:2px}
+/* Sesión ya cumplida en su día: apagada, para que se vea de un vistazo
+   qué queda pendiente esta semana. */
+.pses.hecho{background:rgba(52,209,126,.12);border-color:rgba(52,209,126,.34);opacity:.6}
+.pses.hecho .psn{color:var(--green2)}
+.hechochip{text-align:center;padding:8px;border-radius:10px;font-size:12.5px;font-weight:600;
+  color:var(--green2);background:rgba(52,209,126,.12);border:1px solid rgba(52,209,126,.3)}
+
+/* ══ CATÁLOGO DE RETOS LISTOS ═════════════════════════════════ */
+.presets{display:flex;flex-direction:column;gap:6px}
+.preset{width:100%;text-align:left;padding:10px 12px;border-radius:12px;
+  background:var(--card);border:1px solid var(--line)}
+.preset.puesto{border-color:var(--green);background:linear-gradient(180deg,#122a1e,#0d1a14)}
+.prt{font-family:var(--fb);font-weight:800;font-size:14px;line-height:1.2}
+.okp{font-style:normal;color:var(--green2)}
+.prd{font-size:11.5px;color:#c3cede;margin-top:2px;line-height:1.35}
+.prm{display:flex;align-items:baseline;gap:7px;margin-top:5px}
+.prp{flex:0 0 auto;font-family:var(--fu);font-weight:700;font-size:8.5px;letter-spacing:1.2px;
+  color:var(--blue2);background:rgba(47,155,255,.14);padding:2px 6px;border-radius:4px}
+/* Qué dato hace falta para que el reto pueda avanzar. Va a la vista
+   porque varios dependen de que el atleta marque algo al registrar. */
+.prn{flex:1;min-width:0;font-size:10px;color:var(--dim);line-height:1.3}
+.hechochip.parcial{color:var(--gold2);background:rgba(240,185,58,.12);border-color:rgba(240,185,58,.3)}
