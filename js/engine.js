@@ -270,14 +270,18 @@ function retosSemanalesDelMes() {
 /* ── TIPOS DE ACTIVIDAD ───────────────────────────────────
    Sin esto no se pueden medir los retos de fuerza ni los de variedad:
    una caminata y una sesión de calistenia eran el mismo registro. */
+/* `dist` dice si ese tipo se mide en distancia. Fuerza y "otro" se
+   miden solo por tiempo: pedirle millas a una sesión de calistenia no
+   tiene sentido y obligaba a inventar un número. */
 const TIPOS = {
-  run:      { label:'Run',      em:'🏃' },
-  walk:     { label:'Walk',     em:'🚶' },
-  strength: { label:'Strength', em:'💪' },
-  bike:     { label:'Bike',     em:'🚴' },
-  swim:     { label:'Swim',     em:'🏊' },
-  other:    { label:'Other',    em:'✨' }
+  run:      { label:'Run',      em:'🏃', dist:true  },
+  walk:     { label:'Walk',     em:'🚶', dist:true  },
+  strength: { label:'Strength', em:'💪', dist:false },
+  bike:     { label:'Bike',     em:'🚴', dist:true  },
+  swim:     { label:'Swim',     em:'🏊', dist:true  },
+  other:    { label:'Other',    em:'✨', dist:false }
 };
+const usaDistancia = t => (TIPOS[t] || TIPOS.run).dist;
 const tipoDe = r => r.tipo || 'run';
 /* Fuerza y cross-training cuentan igual para "Complete the Set". */
 const esFuerza = r => ['strength'].includes(tipoDe(r));

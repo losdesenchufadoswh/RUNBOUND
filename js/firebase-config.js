@@ -130,6 +130,8 @@ async function cargarDeNube() {
       }
     }
     if (d.challenges) ST.challenges = d.challenges;
+    /* La nube puede traer los retos de ejemplo viejos: se limpian igual. */
+    if (typeof limpiarRetosDeFabrica === 'function') limpiarRetosDeFabrica();
     if (d.goals)      ST.goals      = d.goals;
     if (d.settings)   ST.settings   = d.settings;
     if (d.season)     ST.season     = d.season;

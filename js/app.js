@@ -14,6 +14,7 @@ let INV_TAB = 'title';
 let TRAINER_TAB = 'daily';
 let EDITING = null;
 let TIPO_RUN = 'run';   // tipo de la actividad que se está registrando
+let FECHA_LOG = null;   // día al que se sube la actividad (null = ahora)
 let EXTRA_CARRERA = false, EXTRA_NEG = false;
 let PARA = [];          // a qué atletas va la sesión que se está creando
 let DIA_SEL = null;     // qué día de la semana le toca (null = cualquiera)
@@ -43,7 +44,7 @@ function openSheet(html) {
   $('#modal').innerHTML = html;
   $('#ov').classList.add('on', 'sheet');
 }
-function closeModal() { $('#ov').classList.remove('on', 'sheet'); EDITING = null; }
+function closeModal() { $('#ov').classList.remove('on', 'sheet'); EDITING = null; FECHA_LOG = null; }
 function bar(pct, cls = '') { return `<div class="bar ${cls}"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div>`; }
 
 /* Caja de arte con glyph de respaldo (láminas de SOVEREIGN). */
@@ -206,6 +207,7 @@ function ligaFin() {
 /* ═══ DESAFÍOS ════════════════════════════════════════════ */
 function renderDesafios() {
   const cs = misRetos().filter(c => c.period === CHAL_TAB);
+  const calendario = (CHAL_TAB === 'daily' && !soyCoach()) ? miSemana() : '';
   const tabs = ['daily','weekly','monthly','yearly'].map(k => ({
     k, l: PERIOD_LABEL[k],
     pip: misRetos().some(c => c.period === k && evalChallenge(c).done && !ST.claimed[c.id])
@@ -242,6 +244,7 @@ function renderDesafios() {
   return `
   <div class="sub">PLAN &amp; GOALS</div>
   ${segmented(CHAL_TAB, tabs, 'ctab')}
+  ${calendario}
 
   <div class="card">
     <div class="ctitle">PLAN SESSIONS
@@ -748,26 +751,19 @@ function renderTrainer() {
 
   ${planSemanal()}
 
-  <div class="sect"><h2>RETOS LISTOS</h2>
-    <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">TOCA PARA AÑADIR</span></div>
-  <div class="presets">
-    ${PRESETS.map(p => {
+  ${['weekly','monthly'].map(per => {
+    const lista = PRESETS.filter(p => p.period === per);
+    return `<div class="sect"><h2>RETOS ${per === 'weekly' ? 'SEMANALES' : 'MENSUALES'}</h2>
+      <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">DESLIZA →</span></div>
+    <div class="presetfila">${lista.map(p => {
       const puesto = ST.challenges.some(c => c.id === p.id);
       return `<button class="preset ${puesto ? 'puesto' : ''}" data-act="preset" data-id="${p.id}">
+        <div class="prbadge">${badgeImg(p.id, p.name)}</div>
         <div class="prt">${esc(p.name)}${puesto ? ' <i class="okp">✓</i>' : ''}</div>
         <div class="prd">${esc(p.desc)}</div>
-        <div class="prm"><span class="prp">${PERIOD_LABEL[p.period]}</span>
-          <span class="prn">${esc(p.necesita)}</span></div>
       </button>`;
-    }).join('')}
-  </div>
-
-  ${EDITING ? `<div class="editando">
-    <div class="eb"><div class="et">EDITANDO</div>
-      <div class="en">${esc((ST.challenges.find(x => x.id === EDITING) || {}).name || '')}</div>
-      <div class="es">Al guardar se MODIFICA esta sesión, no se crea otra.</div></div>
-    <button class="btnw" style="margin:0;flex:0 0 auto;padding:0 14px" data-act="clear-ch">Cancelar</button>
-  </div>` : ''}
+    }).join('')}</div>`;
+  }).join('')}
 
   <div class="sect"><h2>${EDITING ? 'EDITAR SESIÓN' : 'CREATE SESSION'}</h2></div>
   ${segmented(TRAINER_TAB, tabs, 'ttab')}
@@ -962,11 +958,13 @@ function sheetPerfil() {
 }
 
 function modalLogRun() {
-  const now = new Date();
+  const now = FECHA_LOG || new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
   openModal(`
     <h3>Registrar actividad</h3>
-    <div class="msub">CAMINAR CUENTA IGUAL QUE CORRER</div>
+    <div class="msub">${FECHA_LOG
+      ? 'SUBIENDO AL ' + DIAS_LARGO[(FECHA_LOG.getDay() + 6) % 7].toUpperCase()
+      : 'CAMINAR CUENTA IGUAL QUE CORRER'}</div>
 
     <div class="fld txt" style="margin-bottom:9px"><div class="fl">TIPO DE ACTIVIDAD</div>
       <div class="chips">
@@ -985,9 +983,13 @@ function modalLogRun() {
     </div>
 
     <div class="fgrid">
-      <div class="fld"><div class="fl">DISTANCE</div><input id="l_dist" type="number" step="0.01" value="3.0"><div class="fu2">${U.distU()}</div></div>
+      ${usaDistancia(TIPO_RUN)
+        ? `<div class="fld"><div class="fl">DISTANCE</div><input id="l_dist" type="number" step="0.01" value="3.0"><div class="fu2">${U.distU()}</div></div>`
+        : ''}
       <div class="fld"><div class="fl">TIME</div><input id="l_time" type="text" value="36:00"><div class="fu2">MM:SS</div></div>
-      <div class="fld"><div class="fl">ELEVATION</div><input id="l_elev" type="number" value="80"><div class="fu2">${U.elevU()}</div></div>
+      ${usaDistancia(TIPO_RUN)
+        ? `<div class="fld"><div class="fl">ELEVATION</div><input id="l_elev" type="number" placeholder="opcional"><div class="fu2">${U.elevU()}</div></div>`
+        : ''}
       <div class="fld"><div class="fl">AVG HR</div><input id="l_hr" type="number" placeholder="opcional"><div class="fu2">BPM</div></div>
       <div class="fld"><div class="fl">CADENCE</div><input id="l_cad" type="number" placeholder="opcional"><div class="fu2">SPM</div></div>
       <div class="fld"><div class="fl">CUÁNDO</div><input id="l_when" type="datetime-local" value="${local}" style="font-size:12px;font-weight:500"></div>
@@ -996,6 +998,114 @@ function modalLogRun() {
       <button class="btnbig b" data-act="save-run">GUARDAR</button>
       <button class="btnw" style="margin:0" data-act="close">Cancelar</button>
     </div>`);
+}
+
+/* ── CALENDARIO DEL ATLETA ────────────────────────────────────
+   El mismo plan que ve el coach, pero sin poder tocarlo. Lo importante
+   es lo otro: tocar un día YA PASADO abre el registro con esa fecha
+   puesta. Si corriste el lunes y se te olvidó subirlo, el miércoles lo
+   subes sin pelear con el selector de fecha. */
+function miSemana() {
+  const hoy = diaHoy();
+  const inicio = D.startOfWeek();
+  const mias = (ST.challenges || []).filter(c => c.period === 'daily' && esParaMi(c));
+
+  const cols = DIAS.map((d, i) => {
+    const fecha = new Date(inicio); fecha.setDate(fecha.getDate() + i);
+    const pasado = i < hoy, esHoy = i === hoy;
+    const sesiones = mias.filter(c => c.dia === i);
+    const hechas = sesiones.filter(c => cumplidoEnSuDia(c)).length;
+    const completo = sesiones.length > 0 && hechas === sesiones.length;
+    /* Actividades que YA subiste ese día, cumplan o no una sesión. */
+    const subidas = ST.runs.filter(r => !r.manual && D.key(r.start_iso) === D.key(fecha)).length;
+    const puedeSubir = pasado || esHoy;
+
+    return `<div class="pdia ${esHoy ? 'hoy' : ''} ${completo ? 'ok' : ''} ${sesiones.length ? 'lleno' : ''}">
+      <div class="pdl">${d}</div>
+      ${sesiones.length
+        ? sesiones.map(c => `<div class="pses ${cumplidoEnSuDia(c) ? 'hecho' : ''}">
+            <div class="psn">${cumplidoEnSuDia(c) ? '✓ ' : ''}${esc(c.name)}</div>
+          </div>`).join('')
+        : '<div class="pvacio">—</div>'}
+      ${puedeSubir
+        ? `<button class="psub ${subidas ? 'con' : ''}" data-act="subir-dia" data-dia="${i}">
+             ${subidas ? subidas + ' ✓' : '+'}</button>`
+        : '<div class="pfut"></div>'}
+    </div>`;
+  }).join('');
+
+  const sinDia = mias.filter(c => c.dia == null);
+  return `
+  <div class="sect"><h2>TU SEMANA</h2>
+    <span style="font-family:var(--fu);font-weight:700;font-size:11px;color:var(--muted)">TOCA + PARA SUBIR</span></div>
+  <div class="psemana">${cols}</div>
+  ${sinDia.length
+    ? `<div class="hint" style="margin-top:8px">Todos los días: ${sinDia.map(c => esc(c.name)).join(' · ')}</div>`
+    : ''}
+  <div class="hint" style="margin-top:6px">¿Corriste un día y se te olvidó subirlo?
+    Toca el <b style="color:var(--blue2)">+</b> de ese día y se registra con su fecha.</div>`;
+}
+
+/* ── BADGES ───────────────────────────────────────────────────
+   Cada reto preset tiene su lámina en art/badges/<id>.png. Si falta
+   (o no carga) se cae al emoji y nada se rompe. */
+const badgeSrc = id => `art/badges/${id}.png`;
+function badgeImg(id, alt = '', em = '🏅') {
+  return `<img src="${badgeSrc(id)}" alt="${esc(alt)}" loading="lazy"
+    onerror="this.replaceWith(document.createTextNode('${em}'))">`;
+}
+
+/* Pop-up de logro. Se encola porque se pueden cerrar dos retos con la
+   misma actividad y hay que enseñarlos de uno en uno. */
+let COLA_BADGES = [];
+function celebrar(ids) {
+  COLA_BADGES.push(...ids);
+  if (COLA_BADGES.length === ids.length) siguienteBadge();
+}
+function siguienteBadge() {
+  const id = COLA_BADGES[0];
+  if (!id) return;
+  const c = ST.challenges.find(x => x.id === id) || PRESETS.find(x => x.id === id) || {};
+  const el = $('#opening');
+  el.className = 'opening on badge fase-b';
+  el.innerHTML = `
+    <div class="bstage">
+      <div class="oray"></div>
+      <div class="ospark">${Array.from({length:14},(_,i)=>`<i style="--a:${i*(360/14)}deg;--d:${i*40}ms"></i>`).join('')}</div>
+      <div class="bimg">${badgeImg(id, c.name || '')}</div>
+    </div>
+    <div class="bout">
+      <div class="obadge" style="color:var(--gold2)">RETO COMPLETADO</div>
+      <div class="oname">${esc(c.name || 'Reto')}</div>
+      <div class="otype">${esc(c.desc || '')}</div>
+      ${c.xp ? `<div class="osum">+${U.n(c.xp)} XP · +${c.shards} 💎 al reclamarlo</div>` : ''}
+      <div class="obtns">
+        <button class="btnbig" data-act="cerrar-badge">CONTINUAR${COLA_BADGES.length > 1 ? ` (${COLA_BADGES.length})` : ''}</button>
+      </div>
+    </div>`;
+}
+function cerrarBadge() {
+  COLA_BADGES.shift();
+  if (COLA_BADGES.length) { siguienteBadge(); return; }
+  const el = $('#opening');
+  el.classList.remove('on'); el.className = 'opening';
+  setTimeout(() => { if (!el.classList.contains('on')) el.innerHTML = ''; }, 300);
+}
+
+/* Busca retos recién completados y los celebra una sola vez.
+   `ST.badges` guarda cuáles ya se enseñaron, para no repetir el pop-up
+   en cada repintado. */
+function revisarBadges() {
+  if (!ST || !ST.quienSoy) return;
+  if (!ST.badges) ST.badges = {};
+  const nuevos = misRetos()
+    .filter(c => !ST.badges[c.id] && evalChallenge(c).done)
+    .map(c => c.id);
+  if (!nuevos.length) return;
+  const ahora = new Date().toISOString();
+  nuevos.forEach(id => { ST.badges[id] = ahora; });
+  save();
+  celebrar(nuevos);
 }
 
 /* Fecha de hoy en español, para que se vea en qué día estás parado. */
@@ -1365,11 +1475,15 @@ const TYPE_GOAL_LABEL = {
 const HR_ZONES = { Z2:[110,135], Z3:[135,155], Z4:[155,172], Z5:[172,195] };
 
 function saveRun() {
-  const dist = toM($('#l_dist').value), time = parseClock($('#l_time').value);
-  if (!dist || !time) { toast('Falta distancia o tiempo'); return; }
+  const campoDist = $('#l_dist');
+  const dist = campoDist ? toM(campoDist.value) : 0;
+  const time = parseClock($('#l_time').value);
+  /* Fuerza y "otro" no llevan distancia: basta el tiempo trabajado. */
+  if (!time) { toast('Falta el tiempo'); return; }
+  if (usaDistancia(TIPO_RUN) && !dist) { toast('Falta la distancia'); return; }
   addRun({
     distance_m:dist, moving_s:time, elapsed_s:time,
-    elev_m:toElevM($('#l_elev').value || 0),
+    elev_m:$('#l_elev') ? toElevM($('#l_elev').value || 0) : 0,
     avg_hr:Number($('#l_hr').value) || null,
     cadence_spm:Number($('#l_cad').value) || null,
     start_iso:new Date($('#l_when').value || Date.now()).toISOString(),
@@ -1377,9 +1491,11 @@ function saveRun() {
     tipo:TIPO_RUN, carrera:EXTRA_CARRERA, negSplit:EXTRA_NEG
   });
   /* Los extras se limpian: son de esa actividad, no del formulario. */
-  TIPO_RUN = 'run'; EXTRA_CARRERA = false; EXTRA_NEG = false;
+  TIPO_RUN = 'run'; EXTRA_CARRERA = false; EXTRA_NEG = false; FECHA_LOG = null;
   closeModal(); render();
   toast('✅ Actividad registrada — puntos actualizados');
+  /* Si esa actividad cerró algún reto, sale su lámina. */
+  revisarBadges();
 }
 
 function saveChallenge() {
@@ -1515,7 +1631,9 @@ function renderNav() {
     </button>`).join('');
 }
 
+let ULTIMA_VISTA = null;
 function render() {
+  const scrollPrevio = window.scrollY;
   /* Sin perfil elegido no hay app: ni topbar ni nav, solo la pregunta.
      Pintar el resto significaría enseñar datos de nadie. */
   if (!ST.quienSoy) {
@@ -1540,7 +1658,12 @@ function render() {
     : b.art ? `linear-gradient(rgba(7,11,20,.93),rgba(7,11,20,.96)), url("${artSrc(b.art)}")`
             : `${b.css}`;
   document.body.style.backgroundSize = (b && b.art) ? 'cover' : '';
-  window.scrollTo({ top:0, behavior:'instant' });
+  /* Al repintar la misma pantalla se conserva dónde estabas. Antes se
+     saltaba siempre arriba, y escoger un día del plan te mandaba al tope
+     teniendo que bajar otra vez. Solo se sube al cambiar de pantalla. */
+  if (ULTIMA_VISTA === VIEW) window.scrollTo({ top:scrollPrevio, behavior:'instant' });
+  else window.scrollTo({ top:0, behavior:'instant' });
+  ULTIMA_VISTA = VIEW;
 }
 
 /* ═══ EVENTOS ═════════════════════════════════════════════ */
@@ -1623,6 +1746,7 @@ document.addEventListener('click', e => {
       break;
     case 'go-cosmeticos': closeModal(); cerrarCofre(); VIEW = 'tienda'; SHOP_TAB = 'cosmeticos'; render(); break;
     case 'cerrar-cofre':  cerrarCofre(); render(); break;
+    case 'cerrar-badge':  cerrarBadge(); render(); break;
     case 'buy-mile': {
       const r = comprarConMillas(id);
       if (!r.ok) { toast(r.msg); break; }
@@ -1698,6 +1822,16 @@ document.addEventListener('click', e => {
       break;
     }
     case 'tipo-run':     TIPO_RUN = id; modalLogRun(); break;
+    case 'subir-dia': {
+      /* Se abre el registro con la fecha de ese día ya puesta. */
+      const inicio = D.startOfWeek();
+      const f = new Date(inicio);
+      f.setDate(f.getDate() + Number(t.dataset.dia));
+      f.setHours(7, 0, 0, 0);
+      FECHA_LOG = f;
+      modalLogRun();
+      break;
+    }
     case 'extra-carrera':EXTRA_CARRERA = !EXTRA_CARRERA; modalLogRun(); break;
     case 'extra-neg':    EXTRA_NEG = !EXTRA_NEG; modalLogRun(); break;
     case 'mover-sesion': {

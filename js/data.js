@@ -109,54 +109,11 @@ function mulberry32(a) {
 }
 
 /* ── retos por defecto ────────────────────────────────────── */
+/* Sin retos de fábrica. El plan lo arma el coach: los que había
+   (Easy Run, Activity Streak, Weekly Volume…) eran ejemplos míos y se
+   mezclaban con los suyos sin poder distinguirlos. */
 function seedChallenges() {
-  const eod = () => { const d = new Date(); d.setHours(23, 59, 59, 0); return d.toISOString(); };
-  const eow = () => { const d = D.startOfWeek(); d.setDate(d.getDate() + 7); return d.toISOString(); };
-  const eom = () => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString();
-  const eoy = () => new Date(new Date().getFullYear() + 1, 0, 1).toISOString();
-
-  /* Ninguno pide velocidad absoluta — se puede completar TODO caminando.
-     Pero tampoco hay puntos por "salir de la casa": lo que puntúa fuerte
-     son las SESIONES del plan (`by:'plan'` / `by:'system'`), que exigen
-     cumplir parámetros concretos. Los `by:'system'` son metas de volumen. */
-  return [
-    /* ── sesiones del plan (Adherencia) ─────────────────── */
-    { id:'s_suave', period:'daily', name:'Easy Run', desc:'Ritmo cómodo, sin prisa',
-      goal:{ type:'session', target:1 },
-      params:{ dist_m: 2.2 * M_PER_MI, minutes: 30, hrMin: 105, hrMax: 145 },
-      xp:600, shards:70, by:'plan', expires:eod() },
-    { id:'s_cuesta', period:'weekly', name:'Tempo Run', desc:'Sostenido, más fuerte que un easy',
-      goal:{ type:'session', target:2 },
-      params:{ dist_m: 2 * M_PER_MI, minutes: 25 },
-      xp:1400, shards:180, by:'plan', expires:eow() },
-    { id:'s_larga',  period:'weekly', name:'Long Run', desc:'Una sola sesión, 50 minutos',
-      goal:{ type:'session', target:1 },
-      params:{ minutes: 50, dist_m: 3 * M_PER_MI },
-      xp:1600, shards:200, by:'plan', expires:eow() },
-
-    /* ── metas de volumen (Objetivos) ───────────────────── */
-    { id:'c_dist',   period:'daily', name:'Daily Distance', desc:'Acumula 2.5 millas hoy',
-      goal:{ type:'distance', target:2.5 * M_PER_MI }, xp:500, shards:50, by:'system', expires:eod() },
-    { id:'c_time',   period:'daily', name:'Time on Feet', desc:'30 minutos en movimiento',
-      goal:{ type:'time', target:1800 }, xp:500, shards:60, by:'system', expires:eod() },
-    { id:'c_streak', period:'daily', name:'Activity Streak', desc:'Completa 7 actividades',
-      goal:{ type:'streak', target:7 }, xp:400, shards:40, by:'system', expires:eod() },
-
-    { id:'c_wdist',  period:'weekly', name:'Weekly Volume', desc:'Acumula 10 millas esta semana',
-      goal:{ type:'distance', target:10 * M_PER_MI }, xp:1200, shards:150, by:'system', expires:eow() },
-    { id:'c_wruns',  period:'weekly', name:'Active Days', desc:'5 actividades esta semana',
-      goal:{ type:'runs', target:5 }, xp:900, shards:110, by:'system', expires:eow() },
-
-    { id:'c_mile',   period:'monthly', name:'Monthly Goal', desc:'40 millas en el mes',
-      goal:{ type:'distance', target:40 * M_PER_MI }, xp:2000, shards:300, by:'system', expires:eom() },
-    { id:'c_long',   period:'monthly', name:'Long Effort', desc:'Una sola salida de 6 millas',
-      goal:{ type:'single_distance', target:6 * M_PER_MI }, xp:1800, shards:250, by:'system', expires:eom() },
-
-    { id:'c_year',   period:'yearly', name:'Yearly Goal', desc:'400 millas en el año',
-      goal:{ type:'distance', target:400 * M_PER_MI }, xp:10000, shards:2000, by:'system', expires:eoy() },
-    { id:'c_yhr',    period:'yearly', name:'Zone 2 Base', desc:'50 actividades en zona Z2–Z3',
-      goal:{ type:'hr', target:50, min:110, max:155 }, xp:3000, shards:400, by:'system', expires:eoy() }
-  ];
+  return [];
 }
 
 const UPCOMING = {
@@ -180,7 +137,7 @@ const UPCOMING = {
    el resto de la app siga leyendo `ST.runs` como siempre; al cambiar de
    usuario se guardan de vuelta y se hidratan los del otro. Así el cambio
    de perfil no obligó a tocar ni una de las pantallas. */
-const CAMPOS_ATLETA = ['profile', 'runs', 'collection', 'gacha', 'signin', 'claimed', 'log', 'historial'];
+const CAMPOS_ATLETA = ['profile', 'runs', 'collection', 'gacha', 'signin', 'claimed', 'log', 'historial', 'badges'];
 const ID_COACH = 'coach';
 
 /* hrMax/hrRest son TUYAS: el esfuerzo se calcula con reserva cardiaca
@@ -200,7 +157,9 @@ function perfilNuevo(nombre, esCoach = false) {
     log: [],
     /* Cómo fue cada semana. Lo necesitan los retos mensuales que
        preguntan por semanas completas. */
-    historial: { semanas: {} }
+    historial: { semanas: {} },
+    /* Retos cuyo pop-up de logro ya se enseñó, para no repetirlo. */
+    badges: {}
   };
 }
 
@@ -226,12 +185,29 @@ function fresh() {
   };
 }
 
+/* Limpieza de una vez: los retos de ejemplo que traía la app de fábrica
+   (`by:'plan'` y `by:'system'`) se borran de los guardados que ya
+   existen. Solo se conservan los del coach — `by:'trainer'` —, que son
+   los que él creó o añadió del catálogo.
+
+   Se distinguen por el origen, no por el nombre: si el coach crea un
+   reto y lo llama "Easy Run", es suyo y se queda. */
+function limpiarRetosDeFabrica() {
+  if (!ST || !Array.isArray(ST.challenges)) return;
+  const antes = ST.challenges.length;
+  ST.challenges = ST.challenges.filter(c => c.by === 'trainer');
+  if (ST.challenges.length !== antes) {
+    console.log('[migración] Quitados', antes - ST.challenges.length, 'retos de ejemplo');
+  }
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) { ST = JSON.parse(raw); if (!ST.profile) ST = fresh(); }
     else ST = fresh();
   } catch (e) { ST = fresh(); }
+  limpiarRetosDeFabrica();
   return ST;
 }
 /* Antes de escribir a disco se vuelca el perfil activo a `atletas`, si no
